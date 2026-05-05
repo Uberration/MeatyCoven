@@ -8,6 +8,12 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use chrono::{SecondsFormat, Utc};
 use clap::{Parser, Subcommand};
+use crossterm::{
+    cursor::MoveTo,
+    event::{self, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+};
 use uuid::Uuid;
 
 mod api;
@@ -32,7 +38,7 @@ const DEFAULT_TITLE_CHARS: usize = 48;
 #[command(about = "Project-scoped harness substrate for agent sessions")]
 struct Cli {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -96,18 +102,293 @@ enum DaemonCommand {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Command::Doctor => run_doctor(),
-        Command::Daemon { command } => run_daemon_command(command),
-        Command::Run {
+        None => run_magical_tui(),
+        Some(Command::Doctor) => run_doctor(),
+        Some(Command::Daemon { command }) => run_daemon_command(command),
+        Some(Command::Run {
             harness,
             prompt,
             cwd,
             title,
             detach,
-        } => run_session(&harness, &prompt, cwd.as_deref(), title.as_deref(), detach),
-        Command::Sessions => list_sessions(),
-        Command::Attach { session_id } => attach_session(&session_id),
-        Command::Patch { command } => run_patch_command(command),
+        }) => run_session(&harness, &prompt, cwd.as_deref(), title.as_deref(), detach),
+        Some(Command::Sessions) => list_sessions(),
+        Some(Command::Attach { session_id }) => attach_session(&session_id),
+        Some(Command::Patch { command }) => run_patch_command(command),
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MagicalTuiAction {
+    RunHarness,
+    PatchOpenClaw,
+    Sessions,
+    Doctor,
+    Quit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MagicalTuiMove {
+    Up,
+    Down,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MagicalTuiItem {
+    rune: &'static str,
+    label: &'static str,
+    charm: &'static str,
+    ritual: &'static str,
+    spell: &'static str,
+    action: MagicalTuiAction,
+}
+
+const PURPLE: &str = "\x1b[38;5;141m";
+const GOLD: &str = "\x1b[38;5;220m";
+const ROSE: &str = "\x1b[38;5;218m";
+const MOON: &str = "\x1b[38;5;117m";
+const DIM: &str = "\x1b[2m";
+const RESET: &str = "\x1b[0m";
+const MAGICAL_TUI_INNER_WIDTH: usize = 68;
+
+fn magical_tui_items() -> &'static [MagicalTuiItem] {
+    &[
+        MagicalTuiItem {
+            rune: "☾",
+            label: "Run a harness",
+            charm: "Summon Codex or Claude Code",
+            ritual: "Moonlit harness circle for focused project work",
+            spell: "coven run <harness> <prompt...>",
+            action: MagicalTuiAction::RunHarness,
+        },
+        MagicalTuiItem {
+            rune: "✦",
+            label: "Patch OpenClaw",
+            charm: "Open the repair-room guided flow",
+            ritual: "OpenClaw repair-room with repo checks and safe verification",
+            spell: "coven patch openclaw",
+            action: MagicalTuiAction::PatchOpenClaw,
+        },
+        MagicalTuiItem {
+            rune: "◇",
+            label: "View sessions",
+            charm: "Peek at recent Coven work",
+            ritual: "Read the ledger of recent harness sessions",
+            spell: "coven sessions",
+            action: MagicalTuiAction::Sessions,
+        },
+        MagicalTuiItem {
+            rune: "✧",
+            label: "Doctor",
+            charm: "Check familiar readiness",
+            ritual: "Inspect which harness familiars are awake",
+            spell: "coven doctor",
+            action: MagicalTuiAction::Doctor,
+        },
+        MagicalTuiItem {
+            rune: "⋆",
+            label: "Leave the circle",
+            charm: "Close Coven for now",
+            ritual: "Let the altar lights fade without changing anything",
+            spell: "q",
+            action: MagicalTuiAction::Quit,
+        },
+    ]
+}
+
+fn run_magical_tui() -> Result<()> {
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        println!("{}", render_magical_tui_frame_plain(0));
+        println!("\nTip: run `coven run codex <prompt...>` or open `coven` in a terminal for the interactive menu.");
+        return Ok(());
+    }
+
+    let mut selection = 0;
+    enable_raw_mode().context("failed to enter Coven's magical terminal mode")?;
+    let action = loop {
+        execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0))
+            .context("failed to redraw Coven menu")?;
+        print!("{}", render_magical_tui_frame(selection));
+        io::stdout().flush().context("failed to flush Coven menu")?;
+
+        if let Event::Key(key) = event::read().context("failed to read Coven menu input")? {
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    selection = move_magical_tui_selection(selection, MagicalTuiMove::Up);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    selection = move_magical_tui_selection(selection, MagicalTuiMove::Down);
+                }
+                KeyCode::Enter => break magical_tui_items()[selection].action,
+                KeyCode::Esc | KeyCode::Char('q') => break MagicalTuiAction::Quit,
+                _ => {}
+            }
+        }
+    };
+    disable_raw_mode().context("failed to leave Coven's magical terminal mode")?;
+    println!();
+
+    run_magical_tui_action(action)
+}
+
+fn run_magical_tui_action(action: MagicalTuiAction) -> Result<()> {
+    match action {
+        MagicalTuiAction::RunHarness => run_guided_harness_session(),
+        MagicalTuiAction::PatchOpenClaw => {
+            run_patch_openclaw(vec![], None, None, None, false, false, true)
+        }
+        MagicalTuiAction::Sessions => list_sessions(),
+        MagicalTuiAction::Doctor => run_doctor(),
+        MagicalTuiAction::Quit => {
+            println!("{PURPLE}The circle fades. See you soon, little spellcaster. ✨{RESET}");
+            Ok(())
+        }
+    }
+}
+
+fn run_guided_harness_session() -> Result<()> {
+    println!("{GOLD}✨ Let’s summon a harness familiar.{RESET}");
+    let harness = prompt_for_required_line("Harness [codex/claude]: ")?;
+    let prompt = prompt_for_required_line("What should it work on? ")?;
+    run_session(&harness, &[prompt], None, None, false)
+}
+
+fn render_magical_tui_frame(selection: usize) -> String {
+    render_magical_tui_frame_with_color(selection, true)
+}
+
+fn render_magical_tui_frame_plain(selection: usize) -> String {
+    render_magical_tui_frame_with_color(selection, false)
+}
+
+fn render_magical_tui_frame_with_color(selection: usize, color_enabled: bool) -> String {
+    let purple = ansi(color_enabled, PURPLE);
+    let gold = ansi(color_enabled, GOLD);
+    let rose = ansi(color_enabled, ROSE);
+    let moon = ansi(color_enabled, MOON);
+    let dim = ansi(color_enabled, DIM);
+    let reset = ansi(color_enabled, RESET);
+    let mut frame = String::new();
+    frame.push_str(&magical_tui_border('╭', '╮', purple, reset));
+    frame.push_str(&magical_tui_centered_row(
+        "✧ Spellbook ✧",
+        gold,
+        purple,
+        reset,
+    ));
+    frame.push_str(&magical_tui_centered_row(
+        "Coven · purple + gold harness altar",
+        rose,
+        purple,
+        reset,
+    ));
+    frame.push_str(&magical_tui_centered_row(
+        "Moonlit harness circle · tiny spells, real work, soft landing",
+        moon,
+        purple,
+        reset,
+    ));
+    frame.push_str(&magical_tui_border('├', '┤', purple, reset));
+    frame.push_str(&magical_tui_row("Runic keys", gold, purple, reset));
+    frame.push_str(&magical_tui_row(
+        "↑/↓ or j/k to choose · Enter to cast · q/Esc to vanish",
+        dim,
+        purple,
+        reset,
+    ));
+    frame.push_str(&magical_tui_border('├', '┤', purple, reset));
+
+    for (index, item) in magical_tui_items().iter().enumerate() {
+        let pointer = if index == selection { "▸" } else { " " };
+        let content = format!("{pointer} {} {:<17} {}", item.rune, item.label, item.charm);
+        let color = if index == selection { gold } else { purple };
+        frame.push_str(&magical_tui_row(&content, color, purple, reset));
+    }
+
+    let selected = magical_tui_items()[selection.min(magical_tui_items().len() - 1)];
+    frame.push_str(&magical_tui_border('├', '┤', purple, reset));
+    frame.push_str(&magical_tui_row("Ritual preview", gold, purple, reset));
+    frame.push_str(&magical_tui_row(
+        &format!("{} {}", selected.rune, selected.ritual),
+        moon,
+        purple,
+        reset,
+    ));
+    frame.push_str(&magical_tui_row(
+        &format!("Selected spell: {}", selected.spell),
+        gold,
+        purple,
+        reset,
+    ));
+    frame.push_str(&magical_tui_row(
+        "Enter to cast · Esc/q to leave the circle",
+        dim,
+        purple,
+        reset,
+    ));
+
+    frame.push_str(&magical_tui_border('╰', '╯', purple, reset));
+    frame
+}
+
+fn magical_tui_border(left: char, right: char, color: &str, reset: &str) -> String {
+    format!(
+        "{color}{left}{}{right}{reset}\n",
+        "─".repeat(MAGICAL_TUI_INNER_WIDTH)
+    )
+}
+
+fn magical_tui_centered_row(
+    content: &str,
+    text_color: &str,
+    border_color: &str,
+    reset: &str,
+) -> String {
+    let content = first_chars(content, MAGICAL_TUI_INNER_WIDTH);
+    let content_width = content.chars().count();
+    let padding = magical_tui_padding(content_width);
+    let left = padding / 2;
+    let right = padding - left;
+    magical_tui_row(
+        &format!("{}{}{}", " ".repeat(left), content, " ".repeat(right)),
+        text_color,
+        border_color,
+        reset,
+    )
+}
+
+fn magical_tui_row(content: &str, text_color: &str, border_color: &str, reset: &str) -> String {
+    let content = first_chars(content, MAGICAL_TUI_INNER_WIDTH);
+    let content_width = content.chars().count();
+    let padding = magical_tui_padding(content_width);
+    format!(
+        "{border_color}│{reset}{text_color}{content}{}{reset}{border_color}│{reset}\n",
+        " ".repeat(padding)
+    )
+}
+
+#[allow(clippy::implicit_saturating_sub)]
+fn magical_tui_padding(content_width: usize) -> usize {
+    if content_width >= MAGICAL_TUI_INNER_WIDTH {
+        0
+    } else {
+        MAGICAL_TUI_INNER_WIDTH - content_width
+    }
+}
+
+fn ansi(enabled: bool, code: &'static str) -> &'static str {
+    if enabled {
+        code
+    } else {
+        ""
+    }
+}
+
+fn move_magical_tui_selection(current: usize, direction: MagicalTuiMove) -> usize {
+    let item_count = magical_tui_items().len();
+    match direction {
+        MagicalTuiMove::Up => current.checked_sub(1).unwrap_or(item_count - 1),
+        MagicalTuiMove::Down => (current + 1) % item_count,
     }
 }
 
@@ -744,11 +1025,64 @@ mod tests {
     }
 
     #[test]
+    fn cli_defaults_to_magical_tui_when_no_subcommand_is_provided() {
+        let cli = Cli::parse_from(["coven"]);
+
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn magical_tui_frame_uses_purple_gold_branding_and_lists_core_actions() {
+        let frame = render_magical_tui_frame(1);
+
+        assert!(frame.contains("Coven"));
+        assert!(frame.contains("purple"));
+        assert!(frame.contains("gold"));
+        assert!(frame.contains("Run a harness"));
+        assert!(frame.contains("Patch OpenClaw"));
+        assert!(frame.contains("Doctor"));
+        assert!(frame.contains("▸"));
+    }
+
+    #[test]
+    fn magical_tui_selection_wraps_around() {
+        assert_eq!(
+            move_magical_tui_selection(0, MagicalTuiMove::Up),
+            magical_tui_items().len() - 1
+        );
+        assert_eq!(
+            move_magical_tui_selection(magical_tui_items().len() - 1, MagicalTuiMove::Down),
+            0
+        );
+    }
+
+    #[test]
+    fn magical_tui_frame_previews_selected_spell_command() {
+        let frame = render_magical_tui_frame_plain(0);
+
+        assert!(frame.contains("Selected spell"));
+        assert!(frame.contains("coven run <harness> <prompt...>"));
+        assert!(frame.contains("Enter to cast"));
+    }
+
+    #[test]
+    fn magical_tui_frame_feels_like_a_spellbook() {
+        let frame = render_magical_tui_frame_plain(1);
+
+        assert!(frame.contains("✧ Spellbook ✧"));
+        assert!(frame.contains("Moonlit harness circle"));
+        assert!(frame.contains("Ritual preview"));
+        assert!(frame.contains("OpenClaw repair-room"));
+        assert!(frame.contains("Runic keys"));
+        assert!(frame.contains("purple + gold"));
+    }
+
+    #[test]
     fn cli_accepts_daemon_start_status_stop_and_hidden_serve_commands() {
         for subcommand in ["start", "status", "stop", "serve"] {
             let cli = Cli::parse_from(["coven", "daemon", subcommand]);
             match cli.command {
-                Command::Daemon { .. } => {}
+                Some(Command::Daemon { .. }) => {}
                 other => panic!("expected daemon command, got {other:?}"),
             }
         }
@@ -760,12 +1094,12 @@ mod tests {
         let detached = Cli::parse_from(["coven", "run", "codex", "hello", "--detach"]);
 
         match attached.command {
-            Command::Run { detach, .. } => assert!(!detach),
+            Some(Command::Run { detach, .. }) => assert!(!detach),
             other => panic!("expected run command, got {other:?}"),
         }
 
         match detached.command {
-            Command::Run { detach, .. } => assert!(detach),
+            Some(Command::Run { detach, .. }) => assert!(detach),
             other => panic!("expected run command, got {other:?}"),
         }
     }
@@ -775,7 +1109,7 @@ mod tests {
         let cli = Cli::parse_from(["coven", "attach", "session-1"]);
 
         match cli.command {
-            Command::Attach { session_id } => assert_eq!(session_id, "session-1"),
+            Some(Command::Attach { session_id }) => assert_eq!(session_id, "session-1"),
             other => panic!("expected attach command, got {other:?}"),
         }
     }
@@ -820,7 +1154,7 @@ mod tests {
         let cli = Cli::parse_from(["coven", "patch", "openclaw"]);
 
         match cli.command {
-            Command::Patch {
+            Some(Command::Patch {
                 command:
                     PatchCommand::OpenClaw {
                         issue,
@@ -831,7 +1165,7 @@ mod tests {
                         dry_run,
                         keep_session,
                     },
-            } => {
+            }) => {
                 assert!(issue.is_empty());
                 assert!(repo.is_none());
                 assert!(harness.is_none());
@@ -863,7 +1197,7 @@ mod tests {
         ]);
 
         match cli.command {
-            Command::Patch {
+            Some(Command::Patch {
                 command:
                     PatchCommand::OpenClaw {
                         issue,
@@ -874,7 +1208,7 @@ mod tests {
                         dry_run,
                         keep_session,
                     },
-            } => {
+            }) => {
                 assert_eq!(issue, vec!["fix auth order".to_string()]);
                 assert_eq!(repo.as_deref(), Some(Path::new("/repo/openclaw")));
                 assert_eq!(harness.as_deref(), Some("codex"));
