@@ -10,7 +10,7 @@ use chrono::{SecondsFormat, Utc};
 use clap::{Parser, Subcommand};
 use crossterm::{
     cursor::MoveTo,
-    event::{self, Event, KeyCode},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
@@ -169,6 +169,31 @@ enum MagicalTuiMove {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionBrowserMove {
+    Up,
+    Down,
+    PreviousAction,
+    NextAction,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionBrowserActionKind {
+    Attach,
+    Summon,
+    Archive,
+    Sacrifice,
+    Back,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct SessionBrowserAction {
+    key: &'static str,
+    label: &'static str,
+    help: &'static str,
+    kind: SessionBrowserActionKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct MagicalTuiItem {
     key: &'static str,
     slash: &'static str,
@@ -187,6 +212,8 @@ const RESET: &str = "\x1b[0m";
 const MAGICAL_TUI_DEFAULT_INNER_WIDTH: usize = 24;
 const MAGICAL_TUI_MAX_INNER_WIDTH: usize = 24;
 const MAGICAL_TUI_MIN_INNER_WIDTH: usize = 24;
+const SESSION_BROWSER_FIRST_SESSION_ROW: usize = 5;
+const SESSION_BROWSER_MAX_VISIBLE_SESSIONS: usize = 8;
 
 fn magical_tui_items() -> &'static [MagicalTuiItem] {
     &[
@@ -352,12 +379,12 @@ fn run_magical_tui_action(action: MagicalTuiAction) -> Result<()> {
         MagicalTuiAction::PatchOpenClaw => {
             run_patch_openclaw(vec![], None, None, None, false, false, true)
         }
-        MagicalTuiAction::Sessions => list_sessions(false),
-        MagicalTuiAction::AllSessions => list_sessions(true),
-        MagicalTuiAction::AttachSession => run_guided_attach_session(),
-        MagicalTuiAction::SummonSession => run_guided_summon_session(),
-        MagicalTuiAction::ArchiveSession => run_guided_archive_session(),
-        MagicalTuiAction::SacrificeSession => run_guided_sacrifice_session(),
+        MagicalTuiAction::Sessions => run_session_browser(false),
+        MagicalTuiAction::AllSessions => run_session_browser(true),
+        MagicalTuiAction::AttachSession
+        | MagicalTuiAction::SummonSession
+        | MagicalTuiAction::ArchiveSession
+        | MagicalTuiAction::SacrificeSession => run_session_browser(true),
         MagicalTuiAction::Quit => {
             println!("{PURPLE}The circle fades. Nothing changed.{RESET}");
             Ok(())
@@ -389,32 +416,373 @@ fn run_guided_harness_session() -> Result<()> {
     run_session(&harness, &[prompt], None, title.as_deref(), false)
 }
 
-fn run_guided_attach_session() -> Result<()> {
-    let session_id = prompt_for_required_line("Session id to attach: ")?;
-    attach_session(&session_id)
-}
+fn run_session_browser(include_archived: bool) -> Result<()> {
+    let store_path = coven_store_path()?;
+    let conn = store::open_store(&store_path)?;
+    let sessions = if include_archived {
+        store::list_sessions_including_archived(&conn)?
+    } else {
+        store::list_sessions(&conn)?
+    };
 
-fn run_guided_summon_session() -> Result<()> {
-    let session_id = prompt_for_required_line("Session id to summon: ")?;
-    summon_session_command(&session_id)
-}
-
-fn run_guided_archive_session() -> Result<()> {
-    let session_id = prompt_for_required_line("Session id to archive: ")?;
-    archive_session_command(&session_id)
-}
-
-fn run_guided_sacrifice_session() -> Result<()> {
-    let session_id = prompt_for_required_line("Session id to sacrifice: ")?;
-    let confirmation = prompt_for_required_line(
-        "Type `sacrifice` to permanently delete this session and its events: ",
-    )?;
-    if confirmation != "sacrifice" {
-        println!("{PURPLE}Sacrifice cancelled. Nothing changed.{RESET}");
+    if sessions.is_empty() {
+        println!("No Coven sessions to manage yet.");
+        println!("Start one with `coven run codex \"explain this repo in 5 bullets\"`.");
         return Ok(());
     }
 
-    sacrifice_session_command(&session_id, true)
+    if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
+        println!("{}", render_session_browser_frame_plain(&sessions, 0, 0));
+        println!("\nTip: run this in a terminal to select a session and choose an action.");
+        return Ok(());
+    }
+
+    let mut selected_session = 0;
+    let mut selected_action = 0;
+    enable_raw_mode().context("failed to enter Coven session browser")?;
+    execute!(io::stdout(), EnableMouseCapture)
+        .context("failed to enable Coven session browser mouse support")?;
+    let selected = loop {
+        selected_action = selected_action.min(
+            session_browser_actions(&sessions[selected_session])
+                .len()
+                .saturating_sub(1),
+        );
+        execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0))
+            .context("failed to redraw Coven session browser")?;
+        print!(
+            "{}",
+            render_session_browser_frame_for_raw_terminal(
+                &sessions,
+                selected_session,
+                selected_action
+            )
+        );
+        io::stdout()
+            .flush()
+            .context("failed to flush Coven session browser")?;
+
+        match event::read().context("failed to read session browser input")? {
+            Event::Key(key) => match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    selected_session = move_session_browser_selection(
+                        selected_session,
+                        sessions.len(),
+                        SessionBrowserMove::Up,
+                    );
+                    selected_action = 0;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    selected_session = move_session_browser_selection(
+                        selected_session,
+                        sessions.len(),
+                        SessionBrowserMove::Down,
+                    );
+                    selected_action = 0;
+                }
+                KeyCode::Left | KeyCode::BackTab => {
+                    selected_action = move_session_browser_selection(
+                        selected_action,
+                        session_browser_actions(&sessions[selected_session]).len(),
+                        SessionBrowserMove::PreviousAction,
+                    );
+                }
+                KeyCode::Right | KeyCode::Tab => {
+                    selected_action = move_session_browser_selection(
+                        selected_action,
+                        session_browser_actions(&sessions[selected_session]).len(),
+                        SessionBrowserMove::NextAction,
+                    );
+                }
+                KeyCode::Enter => {
+                    let action =
+                        session_browser_actions(&sessions[selected_session])[selected_action];
+                    break Some((sessions[selected_session].clone(), action.kind));
+                }
+                KeyCode::Char(value) => {
+                    let actions = session_browser_actions(&sessions[selected_session]);
+                    if let Some(action) = actions.iter().find(|action| {
+                        action
+                            .key
+                            .chars()
+                            .eq(std::iter::once(value.to_ascii_lowercase()))
+                    }) {
+                        break Some((sessions[selected_session].clone(), action.kind));
+                    }
+                    if matches!(value, 'q' | 'Q') {
+                        break None;
+                    }
+                }
+                KeyCode::Esc => break None,
+                _ => {}
+            },
+            Event::Mouse(mouse) => {
+                if !matches!(mouse.kind, MouseEventKind::Down(_)) {
+                    continue;
+                }
+                let displayed_count = sessions.len().min(SESSION_BROWSER_MAX_VISIBLE_SESSIONS);
+                if let Some(index) = session_browser_session_row_to_index(
+                    mouse.row as usize,
+                    displayed_count,
+                    sessions.len(),
+                ) {
+                    selected_session = index;
+                    selected_action = 0;
+                    continue;
+                }
+
+                let has_more_sessions = sessions.len() > SESSION_BROWSER_MAX_VISIBLE_SESSIONS;
+                let action_count = session_browser_actions(&sessions[selected_session]).len();
+                if let Some(index) = session_browser_action_row_to_index(
+                    mouse.row as usize,
+                    displayed_count,
+                    has_more_sessions,
+                    action_count,
+                ) {
+                    selected_action = index;
+                    let action =
+                        session_browser_actions(&sessions[selected_session])[selected_action];
+                    break Some((sessions[selected_session].clone(), action.kind));
+                }
+            }
+            _ => {}
+        }
+    };
+    execute!(io::stdout(), DisableMouseCapture)
+        .context("failed to disable Coven session browser mouse support")?;
+    disable_raw_mode().context("failed to leave Coven session browser")?;
+    println!();
+
+    if let Some((session, action)) = selected {
+        run_session_browser_action(&session, action)
+    } else {
+        println!("{PURPLE}Closed session browser. Nothing changed.{RESET}");
+        Ok(())
+    }
+}
+
+fn run_session_browser_action(
+    session: &store::SessionRecord,
+    action: SessionBrowserActionKind,
+) -> Result<()> {
+    match action {
+        SessionBrowserActionKind::Attach => attach_session(&session.id),
+        SessionBrowserActionKind::Summon => summon_session_command(&session.id),
+        SessionBrowserActionKind::Archive => archive_session_command(&session.id),
+        SessionBrowserActionKind::Sacrifice => {
+            let confirmation = prompt_for_required_line(&format!(
+                "Type `sacrifice` to permanently delete `{}` and its events: ",
+                first_chars(&session.id, 12)
+            ))?;
+            if confirmation != "sacrifice" {
+                println!("{PURPLE}Sacrifice cancelled. Nothing changed.{RESET}");
+                return Ok(());
+            }
+            sacrifice_session_command(&session.id, true)
+        }
+        SessionBrowserActionKind::Back => {
+            println!("{PURPLE}Closed session browser. Nothing changed.{RESET}");
+            Ok(())
+        }
+    }
+}
+
+fn session_browser_actions(session: &store::SessionRecord) -> Vec<SessionBrowserAction> {
+    let mut actions = vec![SessionBrowserAction {
+        key: "a",
+        label: "Attach",
+        help: "Replay/follow this session",
+        kind: SessionBrowserActionKind::Attach,
+    }];
+
+    if session.archived_at.is_some() {
+        actions.push(SessionBrowserAction {
+            key: "s",
+            label: "Summon",
+            help: "Restore this archived session",
+            kind: SessionBrowserActionKind::Summon,
+        });
+    } else if session.status != RUNNING_SESSION_STATUS {
+        actions.push(SessionBrowserAction {
+            key: "r",
+            label: "Archive",
+            help: "Hide from active list, keep events",
+            kind: SessionBrowserActionKind::Archive,
+        });
+    }
+
+    if session.status != RUNNING_SESSION_STATUS {
+        actions.push(SessionBrowserAction {
+            key: "x",
+            label: "Sacrifice",
+            help: "Permanent delete after typed confirm",
+            kind: SessionBrowserActionKind::Sacrifice,
+        });
+    }
+
+    actions.push(SessionBrowserAction {
+        key: "q",
+        label: "Back",
+        help: "Close without changing anything",
+        kind: SessionBrowserActionKind::Back,
+    });
+    actions
+}
+
+fn render_session_browser_frame_plain(
+    sessions: &[store::SessionRecord],
+    selected_session: usize,
+    selected_action: usize,
+) -> String {
+    render_session_browser_frame_with_color(sessions, selected_session, selected_action, false)
+}
+
+fn render_session_browser_frame_for_raw_terminal(
+    sessions: &[store::SessionRecord],
+    selected_session: usize,
+    selected_action: usize,
+) -> String {
+    render_session_browser_frame_with_color(sessions, selected_session, selected_action, true)
+        .replace('\n', "\r\n")
+}
+
+fn render_session_browser_frame_with_color(
+    sessions: &[store::SessionRecord],
+    selected_session: usize,
+    selected_action: usize,
+    color_enabled: bool,
+) -> String {
+    let purple = ansi(color_enabled, PURPLE);
+    let gold = ansi(color_enabled, GOLD);
+    let rose = ansi(color_enabled, ROSE);
+    let moon = ansi(color_enabled, MOON);
+    let dim = ansi(color_enabled, DIM);
+    let reset = ansi(color_enabled, RESET);
+    let selected_session = selected_session.min(sessions.len().saturating_sub(1));
+    let selected = &sessions[selected_session];
+    let actions = session_browser_actions(selected);
+    let selected_action = selected_action.min(actions.len().saturating_sub(1));
+    let mut frame = String::new();
+
+    frame.push_str(&format!("{gold}Session browser{reset}\n"));
+    frame.push_str(&format!(
+        "{moon}Select work, then choose an action. No IDs to copy.{reset}\n\n"
+    ));
+    frame.push_str(&format!(
+        "{gold}Sessions{reset} {dim}(title | state | harness){reset}\n"
+    ));
+    frame.push_str(&format!(
+        "{dim}Up/Down or click session · Tab/click action · Enter runs{reset}\n"
+    ));
+
+    for (index, session) in sessions
+        .iter()
+        .take(SESSION_BROWSER_MAX_VISIBLE_SESSIONS)
+        .enumerate()
+    {
+        let pointer = if index == selected_session { ">" } else { " " };
+        let color = if index == selected_session {
+            gold
+        } else {
+            purple
+        };
+        frame.push_str(&format!(
+            "{color}{} {title:<30} {status:<9} {harness}{reset}\n",
+            pointer,
+            title = fit_chars(&session.title, 30),
+            status = session_browser_status(session),
+            harness = fit_chars(&session.harness, 8)
+        ));
+    }
+    if sessions.len() > SESSION_BROWSER_MAX_VISIBLE_SESSIONS {
+        frame.push_str(&format!(
+            "{dim}... {} more session(s). Use `coven sessions --all` for text list.{reset}\n",
+            sessions.len() - SESSION_BROWSER_MAX_VISIBLE_SESSIONS
+        ));
+    }
+
+    frame.push_str(&format!("\n{gold}Selected{reset}\n"));
+    frame.push_str(&format!(
+        "{rose}Title:{reset} {}\n",
+        fit_chars(&selected.title, 50)
+    ));
+    frame.push_str(&format!(
+        "{rose}Internal ID:{reset} {}  {rose}Runtime:{reset} {}  {rose}Harness:{reset} {}\n",
+        first_chars(&selected.id, 18),
+        selected.status,
+        selected.harness
+    ));
+    frame.push_str(&format!(
+        "{rose}Project:{reset} {}\n",
+        fit_chars(&selected.project_root, 58)
+    ));
+    frame.push_str(&format!(
+        "{rose}Updated:{reset} {}  {rose}State:{reset} {}\n",
+        selected.updated_at,
+        session_browser_status(selected)
+    ));
+
+    frame.push_str(&format!("\n{gold}Actions{reset}\n"));
+    for (index, action) in actions.iter().enumerate() {
+        let pointer = if index == selected_action { ">" } else { " " };
+        let color = if index == selected_action {
+            gold
+        } else {
+            purple
+        };
+        frame.push_str(&format!(
+            "{color}{} [{}] {:<10} {}{reset}\n",
+            pointer, action.key, action.label, action.help
+        ));
+    }
+    frame
+}
+
+fn session_browser_status(session: &store::SessionRecord) -> &'static str {
+    if session.archived_at.is_some() {
+        "archived"
+    } else if session.status == RUNNING_SESSION_STATUS {
+        "running"
+    } else {
+        "active"
+    }
+}
+
+fn move_session_browser_selection(
+    current: usize,
+    item_count: usize,
+    direction: SessionBrowserMove,
+) -> usize {
+    if item_count == 0 {
+        return 0;
+    }
+    match direction {
+        SessionBrowserMove::Up | SessionBrowserMove::PreviousAction => {
+            current.checked_sub(1).unwrap_or(item_count - 1)
+        }
+        SessionBrowserMove::Down | SessionBrowserMove::NextAction => (current + 1) % item_count,
+    }
+}
+
+fn session_browser_session_row_to_index(
+    row: usize,
+    displayed_count: usize,
+    total_count: usize,
+) -> Option<usize> {
+    let index = row.checked_sub(SESSION_BROWSER_FIRST_SESSION_ROW)?;
+    (index < displayed_count && index < total_count).then_some(index)
+}
+
+fn session_browser_action_row_to_index(
+    row: usize,
+    displayed_count: usize,
+    has_more_sessions: bool,
+    action_count: usize,
+) -> Option<usize> {
+    let extra_rows = usize::from(has_more_sessions);
+    let first_action_row = SESSION_BROWSER_FIRST_SESSION_ROW + displayed_count + extra_rows + 8;
+    let index = row.checked_sub(first_action_row)?;
+    (index < action_count).then_some(index)
 }
 
 fn render_magical_tui_frame(selection: usize) -> String {
@@ -1690,5 +2058,86 @@ mod tests {
             format_session_line(&session),
             "session-id   created    codex    active   A useful session"
         );
+    }
+
+    #[test]
+    fn session_browser_frame_shows_context_actions_and_no_copy_paste_id_prompt() {
+        let sessions = vec![test_session_record(
+            "session-alpha-1234567890",
+            "completed",
+            "codex",
+            "Fix the failing tests before demo",
+            None,
+        )];
+
+        let frame = render_session_browser_frame_plain(&sessions, 0, 0);
+
+        assert!(frame.contains("Session browser"));
+        assert!(frame.contains("Fix the failing tests"));
+        assert!(frame.contains("completed"));
+        assert!(frame.contains("codex"));
+        assert!(frame.contains("Actions"));
+        assert!(frame.contains("Attach"));
+        assert!(frame.contains("Archive"));
+        assert!(frame.contains("Sacrifice"));
+        assert!(frame.contains("session-alpha"));
+        assert!(!frame.contains("<session-id>"));
+    }
+
+    #[test]
+    fn session_browser_actions_are_contextual_for_archived_sessions() {
+        let sessions = [test_session_record(
+            "archived-session-123456",
+            "completed",
+            "claude",
+            "Polish the UI",
+            Some("2026-05-08T07:00:00Z"),
+        )];
+
+        let actions = session_browser_actions(&sessions[0]);
+
+        assert!(actions.iter().any(|action| action.label == "Summon"));
+        assert!(!actions.iter().any(|action| action.label == "Archive"));
+    }
+
+    #[test]
+    fn session_browser_maps_click_rows_to_sessions_and_actions() {
+        assert_eq!(
+            session_browser_session_row_to_index(SESSION_BROWSER_FIRST_SESSION_ROW, 3, 3),
+            Some(0)
+        );
+        assert_eq!(
+            session_browser_session_row_to_index(SESSION_BROWSER_FIRST_SESSION_ROW + 2, 3, 3),
+            Some(2)
+        );
+        assert_eq!(
+            session_browser_action_row_to_index(
+                SESSION_BROWSER_FIRST_SESSION_ROW + 3 + 8,
+                3,
+                false,
+                4,
+            ),
+            Some(0)
+        );
+    }
+
+    fn test_session_record(
+        id: &str,
+        status: &str,
+        harness: &str,
+        title: &str,
+        archived_at: Option<&str>,
+    ) -> store::SessionRecord {
+        store::SessionRecord {
+            id: id.to_string(),
+            project_root: "/tmp/project".to_string(),
+            harness: harness.to_string(),
+            title: title.to_string(),
+            status: status.to_string(),
+            exit_code: None,
+            archived_at: archived_at.map(ToOwned::to_owned),
+            created_at: "2026-05-08T07:00:00Z".to_string(),
+            updated_at: "2026-05-08T07:05:00Z".to_string(),
+        }
     }
 }
