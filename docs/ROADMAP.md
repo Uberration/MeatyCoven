@@ -47,6 +47,7 @@ Shipped:
 - Scriptable and human session output: `coven sessions`, `--plain`, and `--all`.
 - Local HTTP-over-Unix-socket API for clients.
 - Versioned `v1` daemon API contract for external clients.
+- Compatibility tests for the external OpenClaw bridge against versioned daemon responses.
 - Published npm wrapper packages:
   - `@opencoven/cli`
   - `@opencoven/cli-macos`
@@ -57,13 +58,11 @@ Shipped:
 Now:
 
 - Keep the versioned daemon API contract and external-client compatibility work aligned. See [`docs/API-CONTRACT.md`](API-CONTRACT.md).
-- Add compatibility tests for the external OpenClaw plugin against versioned daemon responses.
 - Improve first-run onboarding and failure recovery for missing harness CLIs.
 - Keep the public docs aligned with the actual CLI/API surface.
 
 Next:
 
-- Add compatibility tests that pin the shipped `v1` contract for comux and other local clients.
 - Add stronger real-world smoke tests for daemon restart, attach, kill, archive, summon, and sacrifice flows.
 - Improve install verification across macOS and Linux package paths.
 - Turn the MVP checklist into linked GitHub issues/milestones.

@@ -283,6 +283,12 @@ function unsupportedApiVersionDetail(health: CovenHealthResponse): string | null
       typeof health.apiVersion === "string" && health.apiVersion ? health.apiVersion : "missing";
     return `expected apiVersion ${SUPPORTED_COVEN_API_VERSION}, got ${actual}`;
   }
+  if (
+    !Array.isArray(health.supportedApiVersions) ||
+    !health.supportedApiVersions.includes(SUPPORTED_COVEN_API_VERSION)
+  ) {
+    return `expected supportedApiVersions to include ${SUPPORTED_COVEN_API_VERSION}`;
+  }
   return null;
 }
 

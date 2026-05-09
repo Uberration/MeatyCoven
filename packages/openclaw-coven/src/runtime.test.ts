@@ -954,6 +954,27 @@ describe("CovenAcpRuntime", () => {
     });
   });
 
+  it("reports unsupported Coven supportedApiVersions in doctor", async () => {
+    const runtime = new CovenAcpRuntime({
+      config,
+      client: fakeClient({
+        health: vi.fn(async () => ({
+          ok: true,
+          apiVersion: "v1",
+          supportedApiVersions: ["v2"],
+          daemon: null,
+        })),
+      }),
+    });
+
+    await expect(runtime.doctor()).resolves.toMatchObject({
+      ok: false,
+      code: "COVEN_UNSUPPORTED_API_VERSION",
+      message: "Coven daemon API version is not supported.",
+      details: ["expected supportedApiVersions to include v1"],
+    });
+  });
+
   it("treats missing Coven API versions as unavailable before launching sessions", async () => {
     const launchSession = vi.fn(async () => session());
     const runtime = new CovenAcpRuntime({
