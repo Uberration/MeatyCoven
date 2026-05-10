@@ -15,7 +15,12 @@ flowchart LR
   Comux[comux cockpit] -->|HTTP over Unix socket| Daemon
   OpenClaw[OpenClaw] --> Plugin[external @opencoven/coven plugin]
   Plugin -->|HTTP over Unix socket| Daemon
-  OpenMeow[OpenMeow intake/status] -. future status/intake .-> Daemon
+  OpenMeow[OpenMeow chat/intent client] -->|capabilities + actions| Daemon
+
+  Daemon --> Control[Control plane: capability discovery + action routing]
+  Control --> Policy[Policy + permission hints]
+  Control --> AdapterBus[Adapter/event bus]
+  AdapterBus -. desktop.automation .-> DesktopUse[desktop-use adapters]
 
   Daemon --> Boundary[Project-root + cwd guard]
   Boundary --> Adapter[Harness adapter router]
@@ -72,6 +77,28 @@ flowchart TD
   HarnessCheck -- yes --> Spawn[Spawn harness with argv APIs]
   Spawn --> Ledger[Persist session + events]
 ```
+
+## OpenMeow / automation boundary
+
+OpenMeow should remain a chat UI, local echo/optimistic rendering surface, intent-capture layer, and tiny fast-path host for ultra-simple local actions. It should not become the automation engine.
+
+Coven is the canonical shared local runtime for reusable automation because it centralizes:
+
+- daemon/process ownership
+- policy and permission decisions
+- config/profile storage
+- capability discovery
+- action routing and event emission
+- adapter ownership for Accessibility, AppleScript, keyboard/mouse, window, filesystem, clipboard, and app-specific bridges
+
+The intended flow is:
+
+```text
+user -> OpenMeow -> Coven -> adapters -> desktop/apps
+desktop/apps -> Coven -> OpenMeow UI updates
+```
+
+`GET /api/v1/capabilities` lets OpenMeow and other clients discover what Coven can route. `POST /api/v1/actions` gives clients a stable intent envelope without coupling them directly to brittle OS automation APIs.
 
 ## Current user-facing surface
 

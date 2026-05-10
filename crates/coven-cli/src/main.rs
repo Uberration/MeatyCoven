@@ -17,6 +17,7 @@ use crossterm::{
 use uuid::Uuid;
 
 mod api;
+mod control_plane;
 mod daemon;
 mod harness;
 mod openclaw_repo;

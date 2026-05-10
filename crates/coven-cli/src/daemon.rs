@@ -504,13 +504,7 @@ pub fn serve_next_connection(
         body.as_deref(),
         runtime,
     )?;
-    let reason = match response.status {
-        200 => "OK",
-        202 => "Accepted",
-        409 => "Conflict",
-        404 => "Not Found",
-        _ => "OK",
-    };
+    let reason = http_reason_phrase(response.status);
     let http = format!(
         "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         response.status,
@@ -523,6 +517,19 @@ pub fn serve_next_connection(
         .write_all(http.as_bytes())
         .context("failed to write API response")?;
     Ok(())
+}
+
+fn http_reason_phrase(status: u16) -> &'static str {
+    match status {
+        200 => "OK",
+        201 => "Created",
+        202 => "Accepted",
+        400 => "Bad Request",
+        404 => "Not Found",
+        409 => "Conflict",
+        500 => "Internal Server Error",
+        _ => "OK",
+    }
 }
 
 #[cfg(unix)]
@@ -661,6 +668,11 @@ mod tests {
             *self.killed.lock().unwrap() = true;
             Ok(())
         }
+    }
+
+    #[test]
+    fn http_reason_phrase_names_bad_requests() {
+        assert_eq!(http_reason_phrase(400), "Bad Request");
     }
 
     #[test]

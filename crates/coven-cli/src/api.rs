@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::{daemon::DaemonStatus, project, store};
+use crate::{control_plane, daemon::DaemonStatus, project, store};
 
 pub const COVEN_API_VERSION: &str = "v1";
 pub const SUPPORTED_API_VERSIONS: [&str; 1] = [COVEN_API_VERSION];
@@ -120,6 +120,20 @@ pub fn handle_request_with_runtime(
             }),
         ),
         ("GET", "/health") => json_response(200, &health_response(daemon)),
+        ("GET", "/capabilities") => json_response(200, &control_plane::capabilities()),
+        ("POST", "/actions") => {
+            let payload = match parse_body(body) {
+                Ok(payload) => payload,
+                Err(error) => {
+                    return json_response(
+                        400,
+                        &control_plane::rejected_action("(unknown)", error.to_string()),
+                    );
+                }
+            };
+            let (status, response) = control_plane::route_action(payload);
+            json_response(status, &response)
+        }
         ("GET", "/sessions") => {
             let conn = store::open_store(&store_path(coven_home))?;
             let sessions = store::list_sessions(&conn)?;
@@ -426,6 +440,134 @@ mod tests {
 
         assert_eq!(response.status, 404);
         assert!(response.body.contains("unsupported API version"));
+        Ok(())
+    }
+
+    #[test]
+    fn routes_control_capabilities_discovery_to_json() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+
+        let response = handle_request("GET", "/api/v1/capabilities", temp_dir.path(), None)?;
+
+        assert_eq!(response.status, 200);
+        assert!(response.body.contains(r#""id":"coven.sessions""#));
+        assert!(response.body.contains(r#""id":"coven.control.actions""#));
+        assert!(response.body.contains(r#""id":"desktop.automation""#));
+        assert!(response.body.contains(r#""policy":"requiresApproval""#));
+        Ok(())
+    }
+
+    #[test]
+    fn control_action_routes_safe_capability_refresh() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let body = json!({
+            "action": "coven.capabilities.refresh",
+            "origin": "open-meow",
+            "intentId": "intent-1"
+        })
+        .to_string();
+
+        let response = handle_request_with_body(
+            "POST",
+            "/api/v1/actions",
+            temp_dir.path(),
+            None,
+            Some(&body),
+        )?;
+
+        assert_eq!(response.status, 200);
+        assert!(response.body.contains(r#""accepted":true"#));
+        assert!(response
+            .body
+            .contains(r#""action":"coven.capabilities.refresh""#));
+        assert!(response.body.contains(r#""kind":"capabilities.refreshed""#));
+        assert!(response.body.contains(r#""origin":"open-meow""#));
+        assert!(response.body.contains(r#""intentId":"intent-1""#));
+        Ok(())
+    }
+
+    #[test]
+    fn capabilities_only_advertise_routable_control_actions() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+
+        let response = handle_request("GET", "/api/v1/capabilities", temp_dir.path(), None)?;
+
+        assert_eq!(response.status, 200);
+        assert!(response
+            .body
+            .contains(r#""actions":["coven.capabilities.refresh"]"#));
+        assert!(!response.body.contains("coven.sessions.launch"));
+        assert!(!response.body.contains("desktop.window.focus"));
+        Ok(())
+    }
+
+    #[test]
+    fn malformed_control_actions_fail_closed_with_structured_json() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+
+        let malformed = handle_request_with_body(
+            "POST",
+            "/api/v1/actions",
+            temp_dir.path(),
+            None,
+            Some("{not-json"),
+        )?;
+        let missing = handle_request_with_body(
+            "POST",
+            "/api/v1/actions",
+            temp_dir.path(),
+            None,
+            Some(r#"{"origin":"open-meow"}"#),
+        )?;
+        let empty = handle_request_with_body(
+            "POST",
+            "/api/v1/actions",
+            temp_dir.path(),
+            None,
+            Some(r#"{"action":"   "}"#),
+        )?;
+        let non_object = handle_request_with_body(
+            "POST",
+            "/api/v1/actions",
+            temp_dir.path(),
+            None,
+            Some(r#"["not","an","object"]"#),
+        )?;
+
+        assert_eq!(malformed.status, 400);
+        assert_eq!(missing.status, 400);
+        assert_eq!(empty.status, 400);
+        assert_eq!(non_object.status, 400);
+        assert!(malformed.body.contains(r#""accepted":false"#));
+        assert!(malformed.body.contains(r#""action":"(unknown)""#));
+        assert!(missing.body.contains("request body requires string field"));
+        assert!(empty.body.contains("request body requires string field"));
+        assert!(non_object
+            .body
+            .contains("request body must be a JSON object"));
+        Ok(())
+    }
+
+    #[test]
+    fn control_action_blocks_unknown_actions_before_adapters_run() -> anyhow::Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let body = json!({
+            "action": "desktop.deleteEverything",
+            "origin": "open-meow"
+        })
+        .to_string();
+
+        let response = handle_request_with_body(
+            "POST",
+            "/api/v1/actions",
+            temp_dir.path(),
+            None,
+            Some(&body),
+        )?;
+
+        assert_eq!(response.status, 400);
+        assert!(response.body.contains(r#""accepted":false"#));
+        assert!(response.body.contains("unknown action"));
         Ok(())
     }
 

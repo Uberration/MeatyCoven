@@ -7,6 +7,7 @@ The Coven daemon socket API is a public compatibility boundary for comux and ext
 - `GET /api/v1/health` exposes `apiVersion: "v1"` and `supportedApiVersions: ["v1"]`.
 - Clients should read `/api/v1/health` before assuming any response shape from other endpoints.
 - Legacy unversioned routes such as `GET /health` remain early-MVP aliases; new clients should use `/api/v1`.
+- Control-plane clients should discover capabilities before sending action ids.
 
 ## `GET /api/v1/health`
 
@@ -26,6 +27,83 @@ The Coven daemon socket API is a public compatibility boundary for comux and ext
 ```
 
 If the daemon metadata is unavailable, `daemon` may be `null`.
+
+## Capability catalog shape (`v1`)
+
+`GET /api/v1/capabilities` returns the daemon/control-plane capability catalog. This is the intended OpenMeow handshake for deciding which actions to show or route through Coven.
+
+```json
+{
+  "capabilities": [
+    {
+      "id": "coven.control.actions",
+      "label": "Coven control-plane action router",
+      "adapter": "coven-daemon",
+      "status": "available",
+      "policy": "allow",
+      "actions": ["coven.capabilities.refresh"]
+    },
+    {
+      "id": "desktop.automation",
+      "label": "Desktop automation adapters",
+      "adapter": "desktop-use",
+      "status": "planned",
+      "policy": "requiresApproval",
+      "actions": []
+    }
+  ]
+}
+```
+
+Known enum values in `v1`:
+
+- `status`: `available`, `planned`
+- `policy`: `allow`, `requiresApproval`
+
+Clients should ignore unknown future capability ids and action ids unless they explicitly support them.
+
+## Control action shape (`v1`)
+
+`POST /api/v1/actions` accepts a policy-shaped action envelope. The daemon validates the action id before any adapter work is allowed.
+
+```json
+{
+  "action": "coven.capabilities.refresh",
+  "origin": "open-meow",
+  "intentId": "intent-1",
+  "args": {}
+}
+```
+
+Immediately completed safe actions return `200`:
+
+```json
+{
+  "ok": true,
+  "accepted": true,
+  "action": "coven.capabilities.refresh",
+  "status": "completed",
+  "event": {
+    "kind": "capabilities.refreshed",
+    "action": "coven.capabilities.refresh",
+    "origin": "open-meow",
+    "intentId": "intent-1",
+    "payload": { "capabilities": 3 }
+  }
+}
+```
+
+Unknown action ids return `400` and fail closed:
+
+```json
+{
+  "ok": false,
+  "accepted": false,
+  "action": "desktop.deleteEverything",
+  "status": "rejected",
+  "reason": "unknown action `desktop.deleteEverything`"
+}
+```
 
 ## Session record shape (`v1`)
 

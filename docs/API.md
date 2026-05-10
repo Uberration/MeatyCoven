@@ -14,6 +14,8 @@ Versioned clients should use the `/api/v1` prefix:
 |---|---|
 | `GET /api/v1/api-version` | Read the active API version and supported versions |
 | `GET /api/v1/health` | Check daemon health and metadata |
+| `GET /api/v1/capabilities` | Discover daemon/control-plane capabilities and policy hints |
+| `POST /api/v1/actions` | Route a policy-shaped control-plane action |
 | `GET /api/v1/sessions` | List active sessions |
 | `POST /api/v1/sessions` | Launch a session |
 | `GET /api/v1/sessions/:id` | Fetch one session |
@@ -43,6 +45,64 @@ Unknown `/api/<version>/...` prefixes fail closed with an `unsupported API versi
 ```
 
 When no daemon metadata is available, `daemon` is `null`.
+
+## Control-plane capabilities
+
+`GET /api/v1/capabilities` is the discovery point for first-party clients such as OpenMeow. It returns capability ids, adapter ownership, availability, policy hints, and action ids. This keeps clients from hard-coding what the daemon can do.
+
+```json
+{
+  "capabilities": [
+    {
+      "id": "coven.control.actions",
+      "label": "Coven control-plane action router",
+      "adapter": "coven-daemon",
+      "status": "available",
+      "policy": "allow",
+      "actions": ["coven.capabilities.refresh"]
+    },
+    {
+      "id": "desktop.automation",
+      "label": "Desktop automation adapters",
+      "adapter": "desktop-use",
+      "status": "planned",
+      "policy": "requiresApproval",
+      "actions": []
+    }
+  ]
+}
+```
+
+## Control-plane actions
+
+`POST /api/v1/actions` accepts an OpenMeow-style intent envelope. The daemon routes only known actions; unknown actions fail closed before any adapter can run.
+
+```json
+{
+  "action": "coven.capabilities.refresh",
+  "origin": "open-meow",
+  "intentId": "intent-1",
+  "args": {}
+}
+```
+
+Immediately completed safe actions return `200` with an event-shaped payload that clients can render optimistically or fold into later event streams:
+
+```json
+{
+  "ok": true,
+  "accepted": true,
+  "action": "coven.capabilities.refresh",
+  "status": "completed",
+  "event": {
+    "kind": "capabilities.refreshed",
+    "action": "coven.capabilities.refresh",
+    "origin": "open-meow",
+    "intentId": "intent-1",
+    "payload": { "capabilities": 3 }
+  }
+}
+```
 
 ## Compatibility rules
 
