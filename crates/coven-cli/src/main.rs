@@ -1463,7 +1463,9 @@ fn archive_session_command(session_id: &str) -> Result<()> {
 
     store::archive_session(&conn, session_id, &current_timestamp())?;
     println!("archived session");
-    println!("Summon it later with `coven summon <session-id>` or view it with `coven sessions --all`.");
+    println!(
+        "Summon it later with `coven summon SESSION_ID` (replace SESSION_ID with one from `coven sessions --all`)."
+    );
     Ok(())
 }
 
@@ -1517,8 +1519,8 @@ fn attach_session(session_id: &str) -> Result<()> {
     };
 
     eprintln!(
-        "attached to session {} status={} harness={} title={} ",
-        session.id, session.status, session.harness, session.title
+        "attached to session status={} harness={} title={} ",
+        session.status, session.harness, session.title
     );
 
     maybe_spawn_input_forwarder(home.clone(), session_id.to_string());
