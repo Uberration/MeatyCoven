@@ -57,7 +57,7 @@
 - **Font mismatch:** Without bundled licensed fonts, headings may render differently across machines. The stack is intentionally safe but not pixel-identical.
 - **Token drift:** Because the landing is static HTML, future edits could bypass tokens unless reviewers enforce `brand/docs/BRAND-USAGE.md`.
 - **Package README rendering:** npm/GitHub image handling differs; keeping PNG fallbacks avoids broken logos but duplicates assets.
-- **Brand conflict memory:** Older notes requested no gradients. The new kit is more specific and newer; treat it as authoritative unless Val reverses it.
+- **Brand conflict memory:** Older notes requested no gradients. The new kit is more specific and newer; treat it as authoritative unless maintainers reverse it.
 
 ## Next hardening steps
 

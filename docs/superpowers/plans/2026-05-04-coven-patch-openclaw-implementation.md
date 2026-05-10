@@ -1118,7 +1118,7 @@ Expected: all selected tests pass.
 Run from the Coven repo using the known local OpenClaw checkout:
 
 ```bash
-cargo run -p coven-cli -- patch openclaw "fix auth order" --repo /Users/buns/Documents/GitHub/openclaw/openclaw --harness codex --dry-run
+cargo run -p coven-cli -- patch openclaw "fix auth order" --repo /path/to/openclaw --harness codex --dry-run
 ```
 
 Expected: command prints a plan and repair brief, then exits without launching a harness.
@@ -1406,7 +1406,7 @@ Expected: selected tests pass.
 Run:
 
 ```bash
-cargo run -p coven-cli -- patch openclaw "fix auth order" --repo /Users/buns/Documents/GitHub/openclaw/openclaw --harness codex --dry-run
+cargo run -p coven-cli -- patch openclaw "fix auth order" --repo /path/to/openclaw --harness codex --dry-run
 ```
 
 Expected: dry-run still prints the plan and repair brief, with no harness launch.
@@ -1416,7 +1416,7 @@ Expected: dry-run still prints the plan and repair brief, with no harness launch
 Run:
 
 ```bash
-cargo run -p coven-cli -- patch openclaw --repo /Users/buns/Documents/GitHub/openclaw/openclaw --non-interactive
+cargo run -p coven-cli -- patch openclaw --repo /path/to/openclaw --non-interactive
 ```
 
 Expected: exits non-zero with `issue text is required with --non-interactive` and does not launch a harness.
@@ -1518,8 +1518,8 @@ Expected:
 Run:
 
 ```bash
-cargo run -p coven-cli -- patch openclaw "fix fixture issue" --repo /Users/buns/Documents/GitHub/openclaw/openclaw --harness codex --dry-run
-cargo run -p coven-cli -- patch openclaw --repo /Users/buns/Documents/GitHub/openclaw/openclaw --non-interactive
+cargo run -p coven-cli -- patch openclaw "fix fixture issue" --repo /path/to/openclaw --harness codex --dry-run
+cargo run -p coven-cli -- patch openclaw --repo /path/to/openclaw --non-interactive
 ```
 
 Expected:
@@ -1551,7 +1551,7 @@ Expected:
 - working tree clean;
 - latest five commits correspond to the task commits from this plan.
 
-Report to Val:
+Report to the requester:
 
 ```text
 Implemented `coven patch openclaw` Phase 1.

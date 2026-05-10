@@ -104,7 +104,7 @@ If a feature does not help an early adopter run Codex or Claude Code in a visibl
 
 Coven MVP is successful when all of this is true:
 
-1. From a Git project root, Val can run:
+1. From a Git project root, a developer can run:
 
 ```sh
 coven run codex "fix the failing tests"
@@ -157,7 +157,7 @@ coven run claude "polish this UI"
 
 ```mermaid
 flowchart TD
-  User[Developer / Val] --> CLI[coven CLI]
+  User[Developer] --> CLI[coven CLI]
   CLI --> Daemon[Local Coven daemon]
   Daemon --> Boundary[Project-root boundary guard]
   Boundary --> AdapterRouter[Harness adapter router]
@@ -602,7 +602,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "MIT"
-authors = ["Valentina Alexander"]
+authors = ["OpenCoven contributors"]
 repository = "https://github.com/OpenCoven/coven"
 ```
 
@@ -1565,7 +1565,7 @@ Every implementation slice should use this gate:
 
 Coven MVP is done when an early adopter can install/run Coven from the public repo, launch Codex and Claude Code in project-scoped interactive sessions, list and attach to sessions, recover basic metadata after restart, and see those sessions from comux or through the external `@opencoven/coven` OpenClaw plugin.
 
-MVP is public-facing now; the next readiness bar is at least one non-Val early adopter successfully running both harnesses and reporting that the install/run/attach flow is understandable.
+MVP is public-facing now; the next readiness bar is at least one non-maintainer early adopter successfully running both harnesses and reporting that the install/run/attach flow is understandable.
 
 ## 21. Immediate next action
 
