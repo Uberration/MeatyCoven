@@ -1,47 +1,65 @@
----
-title: "Coven runtime architecture"
-summary: "How CastCodes, the Coven Rust daemon, CLI/TUI, and advanced clients compose around the local socket API, PTY adapters, and event store."
-read_when:
-  - Understanding the Coven runtime topology
-  - Designing a client around the local socket API
-description: "How CastCodes, the Coven Rust daemon, CLI/TUI, and advanced clients compose around the local socket API, PTY adapters, and event store."
----
-
 # Coven Architecture
 
-Coven is a local-first harness substrate. The Rust CLI/daemon is the authority layer; CastCodes is the primary public workspace and proof surface. The CLI/TUI remains an operator surface, while comux, OpenMeow, and the optional OpenClaw plugin are advanced or legacy integration layers.
+Coven is a local-first harness substrate. The Rust CLI/daemon is the authority layer; clients such as the CLI TUI, comux, and the optional OpenClaw plugin are presentation/integration layers.
 
-The versioned local socket API contract lives in [`docs/API-CONTRACT.md`](/API-CONTRACT). Clients should use `GET /api/v1/health` and negotiate against `apiVersion: "coven.daemon.v1"` and the `capabilities` object before depending on session or event response shapes. All error responses use the structured `{ error: { code, message, details } }` envelope documented there.
+The versioned local socket API contract lives in [`docs/API-CONTRACT.md`](API-CONTRACT.md). Clients should use `GET /api/v1/health` and its `apiVersion` / `supportedApiVersions` fields as the handshake before depending on session or event response shapes.
 
 ## Runtime topology
 
 ```mermaid
 flowchart LR
-  User[Developer] --> CastCodes[CastCodes workspace]
-  CastCodes -->|HTTP over Unix socket| Daemon[Coven daemon]
+  subgraph Clients["Client layer"]
+    User[Developer]
+    CLI["coven CLI / TUI"]
+    Comux["comux cockpit"]
+    OpenClaw[OpenClaw]
+    Plugin["@opencoven/coven plugin"]
+    OpenMeow["OpenMeow chat / intent client"]
+  end
 
-  User --> CLI[coven CLI / TUI]
-  CLI -->|direct commands| Rust[Coven Rust CLI]
+  subgraph DaemonCore["Daemon core"]
+    Daemon[Coven daemon]
+    Control["Control plane\n(capability discovery + action routing)"]
+    Policy["Policy + permission hints"]
+    AdapterBus["Adapter / event bus"]
+    Boundary["Project-root + cwd guard"]
+    HarnessRouter["Harness adapter router"]
+  end
+
+  subgraph Adapters["Harness adapters"]
+    Codex["Codex PTY"]
+    Claude["Claude Code PTY"]
+    DesktopUse["desktop-use adapters"]
+    Future["Hermes / Aider / Gemini\n(future adapters)"]
+  end
+
+  subgraph Storage["Persistent storage"]
+    Store[(SQLite session ledger)]
+    Events[(append-only event log)]
+  end
+
+  User --> CLI
+  CLI -->|direct commands| Rust["Coven Rust CLI"]
   Rust --> Daemon
 
-  Comux[comux legacy/reference] -.->|HTTP over Unix socket| Daemon
-  OpenClaw[OpenClaw] --> Plugin[external @opencoven/coven plugin]
-  Plugin -.->|HTTP over Unix socket| Daemon
-  OpenMeow[OpenMeow advanced intake] -.->|capabilities + actions| Daemon
+  Comux -->|"HTTP over Unix socket"| Daemon
+  OpenClaw --> Plugin
+  Plugin -->|"HTTP over Unix socket"| Daemon
+  OpenMeow -->|"capabilities + actions"| Daemon
 
-  Daemon --> Control[Control plane: capability discovery + action routing]
-  Control --> Policy[Policy + permission hints]
-  Control --> AdapterBus[Adapter/event bus]
-  AdapterBus -. desktop automation .-> DesktopUse[desktop-use adapters]
+  Daemon --> Control
+  Control --> Policy
+  Control --> AdapterBus
+  AdapterBus -.->|desktop.automation| DesktopUse
 
-  Daemon --> Boundary[Project-root + cwd guard]
-  Boundary --> Adapter[Harness adapter router]
-  Adapter --> Codex[Codex PTY]
-  Adapter --> Claude[Claude Code PTY]
-  Adapter -. future .-> Future[Hermes / Aider / Gemini / custom adapters]
+  Daemon --> Boundary
+  Boundary --> HarnessRouter
+  HarnessRouter --> Codex
+  HarnessRouter --> Claude
+  HarnessRouter -.->|future| Future
 
-  Daemon --> Store[(SQLite session ledger)]
-  Daemon --> Events[(append-only event log)]
+  Daemon --> Store
+  Daemon --> Events
   Codex --> Events
   Claude --> Events
 ```
@@ -57,42 +75,72 @@ sequenceDiagram
   participant H as Harness PTY
 
   U->>C: coven run codex "fix tests"
-  C->>D: POST /api/v1/sessions(projectRoot, cwd, harness, prompt)
+  activate C
+  C->>D: POST /api/v1/sessions (projectRoot, cwd, harness, prompt)
+  activate D
   D->>D: canonicalize projectRoot + cwd
   D->>D: reject outside-root or unsupported harness
   D->>S: create session metadata
   D->>H: spawn validated argv in PTY
+  activate H
   H-->>S: output / exit events
   D-->>C: session id + running status
+  deactivate D
+  deactivate C
+
+  Note over U,C: Browse and manage sessions
 
   U->>C: coven sessions
-  C->>S: list active sessions, or all with --all
+  activate C
+  C->>S: list active sessions, or all with --all flag
   C-->>U: interactive session browser
+  deactivate C
 
   U->>C: Rejoin / View Log / Summon / Archive / Sacrifice
-  C->>D: attach/input/kill when live
-  C->>S: archive/summon/sacrifice non-live session rituals
+  activate C
+  C->>D: attach / input / kill (when session is live)
+  C->>S: archive / summon / sacrifice (non-live session rituals)
+  deactivate C
+  deactivate H
 ```
 
 ## Authority boundary
 
 ```mermaid
 flowchart TD
-  Client[CastCodes, CLI, TUI, advanced clients] --> Request[Launch / input / kill / list request]
-  Request --> Rust[Rank 0 authority: Rust daemon]
-  Rust --> RootCheck{projectRoot explicit?}
-  RootCheck -- no --> RejectRoot[Reject]
-  RootCheck -- yes --> CwdCheck{cwd canonicalized inside root?}
-  CwdCheck -- no --> RejectCwd[Reject]
-  CwdCheck -- yes --> HarnessCheck{harness allowlisted?}
-  HarnessCheck -- no --> RejectHarness[Reject with install hint]
-  HarnessCheck -- yes --> Spawn[Spawn harness with argv APIs]
-  Spawn --> Ledger[Persist session + events]
+  Client["CLI / TUI / comux / OpenClaw plugin"]
+  Request["Launch / input / kill / list request"]
+  Rust["Rank 0 authority: Rust daemon"]
+  RootCheck{"projectRoot\nexplicit?"}
+  CwdCheck{"cwd canonicalized\ninside root?"}
+  HarnessCheck{"harness\nallowlisted?"}
+  RejectRoot["❌ Reject"]
+  RejectCwd["❌ Reject"]
+  RejectHarness["❌ Reject with install hint"]
+  Spawn["Spawn harness with argv APIs"]
+  Ledger["Persist session + events"]
+
+  Client --> Request
+  Request --> Rust
+  Rust --> RootCheck
+  RootCheck -->|no| RejectRoot
+  RootCheck -->|yes| CwdCheck
+  CwdCheck -->|no| RejectCwd
+  CwdCheck -->|yes| HarnessCheck
+  HarnessCheck -->|no| RejectHarness
+  HarnessCheck -->|yes| Spawn
+  Spawn --> Ledger
+
+  style RejectRoot  fill:#fca5a5,stroke:#dc2626,color:#000
+  style RejectCwd   fill:#fca5a5,stroke:#dc2626,color:#000
+  style RejectHarness fill:#fca5a5,stroke:#dc2626,color:#000
+  style Spawn       fill:#86efac,stroke:#16a34a,color:#000
+  style Ledger      fill:#86efac,stroke:#16a34a,color:#000
 ```
 
-## Advanced intake / automation boundary
+## OpenMeow / automation boundary
 
-OpenMeow-like surfaces should remain chat UI, local echo/optimistic rendering, intent-capture, or tiny fast-path hosts for ultra-simple local actions. They should not become the automation engine or the primary public Coven story.
+OpenMeow should remain a chat UI, local echo/optimistic rendering surface, intent-capture layer, and tiny fast-path host for ultra-simple local actions. It should not become the automation engine.
 
 Coven is the canonical shared local runtime for reusable automation because it centralizes:
 
@@ -110,15 +158,7 @@ user -> OpenMeow -> Coven -> adapters -> desktop/apps
 desktop/apps -> Coven -> OpenMeow UI updates
 ```
 
-`GET /api/v1/capabilities` lets CastCodes and advanced clients discover what Coven can route. `POST /api/v1/actions` gives clients a stable intent envelope without coupling them directly to brittle OS automation APIs.
-
-## Future adapter boundary
-
-Coven's current public runtime is single-harness per session. The daemon already keeps the right lower-level boundary for future coordination work: clients can discover capabilities, launch known harnesses, read events, and preserve project-root enforcement in Rust.
-
-Do not document future orchestration commands as user-facing until they exist in the CLI and socket API. Future coordination layers should build above the current session/event contract without bypassing daemon validation.
-
----
+`GET /api/v1/capabilities` lets OpenMeow and other clients discover what Coven can route. `POST /api/v1/actions` gives clients a stable intent envelope without coupling them directly to brittle OS automation APIs.
 
 ## Current user-facing surface
 
@@ -132,11 +172,11 @@ Do not document future orchestration commands as user-facing until they exist in
 
 ## Distribution snapshot
 
-The npm wrapper packages are published for early adopters:
+The npm wrapper packages are live for early adopters:
 
 - `@opencoven/cli`
 - `@opencoven/cli-macos`
 - `@opencoven/cli-linux-x64`
-- `@opencoven/cli-windows` for Windows x64
+- `@opencoven/cli-windows` once the next Windows-enabled release is published
 
-The source package versions stay template-like in the repo; release workflow dispatch supplies the published version and builds platform packages. Check the npm registry and GitHub releases before making version-specific release claims.
+The source package versions stay template-like in the repo; release workflow dispatch supplies the published version and builds platform packages. As of the current documentation pass, npm latest is `0.0.10` for the wrapper plus macOS/Linux packages; Windows x64 release wiring is staged for the next package release.
