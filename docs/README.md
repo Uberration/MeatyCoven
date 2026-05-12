@@ -2,6 +2,10 @@
 
 This directory holds the product and architecture notes for Coven, the OpenCoven harness substrate.
 
+OpenCoven is an open ecosystem for persistent AI familiars: named agents with memory, tools, identity, roles, and continuity. Coven is the local harness substrate that helps those systems run inside explicit project boundaries.
+
+The guiding promise: OpenCoven turns AI from a blank chatbox into a living workspace of agents that remember, coordinate, and belong to the user.
+
 ## Start here
 
 - [Getting started](GETTING-STARTED.md) — first install, first daemon, first session, and contributor checks.
@@ -43,6 +47,7 @@ Keep these docs aligned with VMUX-style clarity while staying specific to OpenCo
 - Concrete quick-start commands.
 - Explicit local trust boundary.
 - Clear relationship to comux and OpenClaw.
+- Consistent OpenCoven positioning: persistent familiars, user-owned systems, memory, identity, tools, orchestration, and multi-agent collaboration.
 - Be precise about npm status: packages are published for early adopters, but Coven is still an early local-first MVP.
 
 ## Canonical language

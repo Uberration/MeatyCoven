@@ -1,445 +1,373 @@
 ---
-name: OpenCoven Design System
-description: Opinionated design constraints for OpenCoven harness interfaces, cockpit UIs, and agent-built components
-style: Dark
-accent: Violet
-grid: 4px
-framework: Lit/React
+name: opencoven-design
+description: Agent-operable design constraints for OpenCoven, Coven, harness cockpits, docs, and integration surfaces
+style: dark
+accent: violet
+source_of_truth: DESIGN.md
 ---
 
-# OpenCoven Design System
+# OpenCoven Design Skill
 
-Opinionated UI constraints for building consistent, dense, command-first interfaces for the OpenCoven harness ecosystem (comux, OpenMeow, OpenClaw integrations).
+Use this skill when designing or implementing OpenCoven/Coven interfaces, docs pages, diagrams, package README visuals, native companion surfaces, or agent-built UI components.
 
-## Colors
+OpenCoven should feel like collective intelligence plus controlled power: arcane but precise, technical not gimmicky, powerful not loud, minimal but symbolic.
 
-**Semantic Tokens:**
+Core positioning: OpenCoven is an open ecosystem for persistent AI familiars: named agents with memory, tools, identity, roles, and continuity. It turns AI from a blank chatbox into a living workspace of agents that remember, coordinate, and belong to the user.
 
+## Source Of Truth
+
+Read these local files before changing brand or UI behavior:
+
+- `DESIGN.md` - canonical brand and design system
+- `docs/BRAND.md` - brand asset index and usage summary
+- `docs/BRANDING-ADHERENCE.md` - current exceptions, risks, and hardening checklist
+- `brand/docs/BRAND-USAGE.md` - contributor PR checklist
+- `brand/ui/color-tokens.css` - canonical CSS color tokens
+- `brand/ui/typography.css` - canonical typography tokens
+
+Do not invent a separate design system. If this skill conflicts with `DESIGN.md`, follow `DESIGN.md` and update this skill.
+
+## Brand Position
+
+Build for harness operators and developers, not a marketing toy.
+
+- The default feeling is a quiet command cockpit.
+- The product promise is durable AI systems that can stay: remember what matters, understand their purpose, use tools, coordinate with other agents, and remain understandable over time.
+- A familiar is not a faceless bot. It has a name, purpose, memory, toolset, voice, role, and place in a larger workflow.
+- Keep the philosophy clear: powerful without becoming opaque, personal without pretending to be human, extensible without collapsing into chaos.
+- Mystical symbolism is allowed only when it supports identity: sigil, trident, flame, crescents, nodes, execution paths.
+- Interfaces should be dense, legible, and repeatable under daily use.
+- Copy should be direct and capable. Avoid hype, jokes, and vague AI language.
+- Use `OpenCoven` for the ecosystem/org and `Coven` for the CLI/daemon/product.
+- The command is always `coven`, never `opencoven`.
+
+## Color Tokens
+
+Use the repo tokens, not arbitrary hex values.
+
+```css
+--oc-black: #000000;
+--oc-white: #ffffff;
+
+--oc-purple-1: #6E4BFF;
+--oc-purple-2: #8A63FF;
+--oc-purple-3: #A78BFF;
+--oc-purple-glow: #7C5CFF;
+
+--oc-accent-blue: #0A84FF;
+--oc-danger: #FF3B30;
+--oc-success: #30D158;
+
+--oc-surface-0: var(--oc-black);
+--oc-surface-1: #050507;
+--oc-surface-2: #080812;
+--oc-border-subtle: rgba(255, 255, 255, 0.08);
+--oc-border-strong: rgba(255, 255, 255, 0.14);
+--oc-text: rgba(255, 255, 255, 0.94);
+--oc-text-muted: rgba(255, 255, 255, 0.64);
+--oc-text-faint: rgba(255, 255, 255, 0.42);
 ```
-# Foundation (Grayscale)
-surface-0:        #000000  (pure black, backgrounds)
-surface-1:        #0d0d0d  (raised, very dark)
-surface-2:        #1a1a1a  (cards, panels)
-surface-3:        #262626  (borders, dividers)
-surface-4:        #333333  (hover states)
 
-text-primary:     #ffffff  (main text)
-text-secondary:   #b3b3b3  (secondary, muted)
-text-tertiary:    #808080  (very muted, hints)
-text-inverse:     #000000  (on accent backgrounds)
+### Color Rules
 
-border-primary:   #333333  (dividers, outlines)
-border-secondary: #1f1f1f  (subtle dividers)
-border-focus:     #7c3aed  (focused elements)
+- Use black and white for roughly 90 percent of the composition.
+- Reserve purple for identity, primary CTAs, focus, selected state, execution paths, and small highlights.
+- Use `--oc-accent-blue` only for documented actionable/system states. Do not make blue the brand accent.
+- Use `--oc-danger` for destructive actions and hard errors.
+- Use `--oc-success` for completion, connected, passing, and healthy states.
+- Keep text WCAG AA contrast on every surface.
 
-# Accent (Violet)
-accent-primary:   #7c3aed  (interactive, highlights, focus)
-accent-secondary: #6d28d9  (hover state)
-accent-dark:      #5b21b6  (active/pressed)
-accent-light:     #a78bfa  (light overlays, secondary accent)
+## Signature Treatments
 
-# Semantic
-success:          #10b981  (confirmations, positive)
-warning:          #f59e0b  (cautions, warnings)
-error:            #ef4444  (destructive, errors)
-info:             #7c3aed  (same as accent-primary)
+Gradients and glow are allowed, but only as controlled brand moments.
+
+```css
+--oc-gradient-signature: linear-gradient(135deg, var(--oc-purple-1), var(--oc-purple-3));
+--oc-radial-glow: radial-gradient(circle, rgba(138, 99, 255, 0.28) 0%, rgba(138, 99, 255, 0) 68%);
+--oc-focus-ring: 0 0 0 2px rgba(124, 92, 255, 0.52), 0 0 32px rgba(124, 92, 255, 0.28);
+--oc-hover-glow: 0 0 36px rgba(124, 92, 255, 0.26);
 ```
+
+Use signature treatment for:
+
+- Primary logo and hero/OG assets
+- Focus rings and interactive affordances
+- Hover glow on CTAs or selected execution paths
+- Subtle radial glow behind the sigil
+
+Do not use gradients or glows for:
+
+- General cards
+- Tables
+- Dense cockpit panels
+- Documentation diagrams, except small path highlights
+- Decorative page backgrounds
 
 ## Typography
 
-**Font Stack:**
-```
---font-primary:   -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif
---font-mono:      "Courier New", monospace, "SF Mono"
+Use the repo typography tokens.
+
+```css
+--oc-font-ui: Inter, "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+--oc-font-display: Satoshi, "Neue Montreal", Geist, Inter, "SF Pro Display", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+--oc-font-mono: "SF Mono", SFMono-Regular, ui-monospace, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+--oc-tracking-heading: -0.02em;
+--oc-tracking-hero: -0.055em;
+--oc-tracking-label: 0.14em;
+--oc-line-body: 1.4;
+--oc-line-heading: 1.2;
 ```
 
-**Scale (rem units):**
+### Typography Rules
+
+- Use UI font for product surfaces, controls, tables, body text, and docs prose.
+- Use display font for hero headlines and major product headings only.
+- Use mono font for commands, session IDs, logs, event streams, diffs, paths, hashes, and API payloads.
+- Keep body line height at 1.4 and headings at 1.2.
+- Avoid all-caps except for compact labels, badges, and nav group headings.
+- Do not add playful, cursive, serif, or decorative fonts.
+
+## Spacing And Shape
+
+- Base spacing is a 4px grid.
+- Dense cockpit UIs should favor 4px, 8px, 12px, and 16px increments.
+- Documentation and landing pages may use more breathing room, but still stay on grid.
+- Cards and panels should use restrained radii: 4px to 8px unless a platform style requires otherwise.
+- Do not nest cards inside cards.
+- Use borders and alignment before shadows.
+
+Recommended dimensions:
+
 ```
-text-xs:          0.75rem  (10px, labels, tags)
-text-sm:          0.875rem (14px, secondary text)
-text-base:        1rem     (16px, body text)
-text-lg:          1.125rem (18px, section headings)
-text-xl:          1.25rem  (20px, modal titles)
-text-2xl:         1.5rem   (24px, page titles)
-text-mono:        0.875rem (monospace for code, logs, terminal output)
+Button heights: 24px compact, 32px standard, 40px large
+Input height: 32px standard
+Table rows: 32px dense, 40px comfortable
+Sidebar: 280px standard, 320px expanded
+Modal: 400px compact, 500px standard, 600px wide
+Icon grid: 24px or 32px
 ```
 
-**Weights:**
-```
-font-normal:      400
-font-medium:      500  (labels, highlights)
-font-semibold:    600  (headings, emphasis)
-font-bold:        700  (page titles only)
-```
+## Layout Patterns
 
-**Text Styles:**
-```
-heading-1:        text-2xl, font-bold, line-height: 1.3
-heading-2:        text-xl, font-semibold, line-height: 1.4
-heading-3:        text-lg, font-semibold, line-height: 1.4
-body:             text-base, font-normal, line-height: 1.6
-caption:          text-xs, font-normal, line-height: 1.5
-code:             text-mono, font-normal, background: surface-2, padding: 0.25rem 0.5rem
-```
+### Harness Cockpit
 
-## Spacing
+Use for session managers, operator dashboards, run queues, agent control rooms, and debug tools.
 
-**Grid:** 4px base unit
+- Left navigation or lane rail, main work area, optional right inspector.
+- Dense rows with clear status badges.
+- Mono identifiers for sessions, agents, tools, commits, ports, and paths.
+- Explicit empty, loading, error, and disconnected states.
+- No oversized marketing hero inside operational UI.
 
-**Scale:**
-```
-0:    0px
-0.5:  2px   (micro-spacing)
-1:    4px   (base)
-1.5:  6px   (compact)
-2:    8px   (standard, default margins)
-3:    12px  (comfortable)
-4:    16px  (section spacing)
-6:    24px  (major breaks)
-8:    32px  (page-level spacing)
-12:   48px  (full-page gutters)
-```
+### Session Browser
 
-**Layout Gutters:**
-```
---gutter-page:    1.5rem  (24px, outer margins)
---gutter-section: 1rem    (16px, section breaks)
---gutter-compact: 0.5rem  (8px, dense cockpit mode)
-```
+Use tab-like navigation for long-lived work.
 
-## Borders
+- Tabs or session pills show active work.
+- Preserve browser-like history where relevant: back, forward, reopen, recent sessions.
+- Active session should be obvious through border, text, and selected state, not color alone.
+- Destructive session actions should be visible but gated.
+- Use product ritual labels exactly where they exist: **Rejoin**, **View Log**, **Summon**, **Archive**, and **Sacrifice**.
+- **Archive** is reversible and keeps the ledger.
+- **Summon** restores an archived session to the active list.
+- **Sacrifice** is permanent, refuses running sessions, and requires explicit confirmation such as `--yes` or typed confirmation.
+- In terminal UIs, `coven sessions` should favor a human browser; `coven sessions --plain` stays scriptable.
 
-**Radius Scale:**
-```
-radius-none:      0px
-radius-sm:        2px   (subtle corners, tight components)
-radius-md:        4px   (standard, cards, buttons)
-radius-lg:        6px   (modals, popovers)
-radius-xl:        8px   (large surfaces)
-radius-full:      9999px (badges, avatars)
-```
+### Documentation And Landing
 
-**Width Scale:**
-```
-border-1:         1px   (standard)
-border-2:         2px   (focus rings, emphasis)
-border-3:         3px   (destructive confirmation)
-```
+- Landing hero: black foundation, centered sigil, restrained purple glow, literal OpenCoven/Coven offer.
+- Docs: calm technical rhythm, readable code blocks, no decorative clutter.
+- Diagrams: nodes, paths, monoline icons, purple execution highlights.
+- Keep the next section visible below a landing hero on normal mobile and desktop viewports.
+- Be honest about early MVP status where relevant. Do not imply production maturity beyond the docs.
 
-**Focus Rings:**
-```
-focus-ring:       2px solid accent-primary, offset 2px
-focus-ring-error: 2px solid error, offset 2px
-```
+### Repair And Trust Surfaces
 
-## Layout
-
-**Viewport Breakpoints:**
-```
-mobile:   0px     (phones)
-tablet:   768px   (iPad, small tablets)
-desktop:  1024px  (laptop)
-wide:     1440px  (ultrawide)
-```
-
-**Container Patterns:**
-```
-page-max-width:   1400px
-sidebar-width:    280px  (or 320px in detail view)
-modal-width:      500px  (standard), 600px (wide), 400px (compact)
-drawer-width:     400px
-
-# Cockpit-style dense layout
-dense-columns:    8-12 columns, 4px gaps (terminal-like grid)
-```
-
-**Component Layout:**
-```
-button-height:    32px    (standard), 24px (compact), 40px (large)
-input-height:     32px
-card-padding:     16px    (standard), 12px (compact)
-table-row-height: 40px    (comfortable), 32px (dense)
-```
+- Repair flows should show selected repo root, branch, dirty files, untracked files, harness, and verification profile before launch.
+- Dirty repos require a visible warning and confirmation.
+- v0 repair flows never commit, push, or operate outside the selected repo root.
+- Treat the Rust CLI/daemon as the authority boundary for project-root validation, PTY lifecycle, socket API, input/kill, and persistence.
+- Clients may improve UX, but they must not visually imply authority they do not have.
 
 ## Components
 
-**Button:**
-```
-Sizes:
-  - small:   height 24px, padding 4px 12px, text-xs, rounded-sm
-  - default: height 32px, padding 8px 16px, text-sm, rounded-md
-  - large:   height 40px, padding 12px 20px, text-base, rounded-md
+### Buttons
 
-Variants:
-  - primary:   background accent-primary, text white, border none
-  - secondary: background surface-2, text text-primary, border 1px border-primary
-  - outline:   background transparent, border 2px accent-primary, text accent-primary
-  - ghost:     background transparent, border none, text text-primary (hover: background surface-2)
-  - danger:    background error, text white, border none
-  
-States:
-  - default:   as specified
-  - hover:     darken 5%, cursor pointer
-  - active:    darken 10%, border-focus 2px
-  - disabled:  opacity 50%, cursor not-allowed
-  - loading:   spinner, opacity 70%, cursor wait
-```
+- Primary: purple accent, white text, restrained hover glow.
+- Secondary: dark surface, subtle border, white or muted text.
+- Ghost: transparent, clear hover surface.
+- Danger: danger token, explicit label, confirmation for irreversible actions.
+- Icon buttons should use familiar icons and tooltips when meaning is not obvious.
+- Hover should not scale layout.
 
-**Input / TextArea:**
-```
-Sizing:
-  - height 32px, padding 8px 12px
-  - border 1px border-primary, radius-md
-  - background surface-2, text text-primary
+### Inputs
 
-States:
-  - focus:     border-2 accent-primary, outline none, shadow: inset 0 0 0 3px accent-light (opacity 20%)
-  - hover:     border-primary 1px (darken)
-  - error:     border-2 error
-  - disabled:  background surface-1, text-tertiary, cursor not-allowed
-  - readonly:  background surface-1, text-secondary
+- Dark surface, subtle border, clear placeholder color.
+- Focus must use visible purple ring or equivalent tokenized focus treatment.
+- Error state must include border and text message.
+- Disabled and readonly states must be visually distinct.
 
-Placeholder: color text-tertiary
-```
+### Panels And Cards
 
-**Card / Panel:**
-```
-Background:     surface-2
-Border:         1px border-primary, radius-md
-Padding:        16px (standard), 12px (compact)
-Shadow:         none (dark mode: no shadows)
-Dividers:       1px border-secondary between sections
-```
+- Use for real grouped content, repeated items, modals, and framed tools.
+- Background: `--oc-surface-1` or `--oc-surface-2`.
+- Border: `--oc-border-subtle` or `--oc-border-strong`.
+- Prefer dividers and alignment over shadows.
+- Do not use glass-heavy blur.
 
-**Table:**
-```
-Header:
-  - background surface-3
-  - font semibold, text-xs, text-secondary
-  - padding 8px 12px, align left
-  
-Row:
-  - height 40px (comfortable), 32px (dense)
-  - border-bottom 1px border-secondary
-  - padding 8px 12px
-  
-Cells:
-  - text-secondary by default
-  - hover: background surface-1 (very subtle)
-  
-Alternating rows: no striping (maintain dense clarity)
-```
+### Tables And Lists
 
-**Modal / Dialog:**
-```
-Backdrop:       background black, opacity 50%
-Container:      background surface-0, border 1px border-primary, radius-lg
-Header:         padding 16px, heading-2, border-bottom 1px border-secondary
-Body:           padding 16px
-Footer:         padding 12px 16px, border-top 1px border-secondary, text-right buttons
+- Header labels should be compact, muted, and scannable.
+- Rows should support hover, selected, focused, loading, and error states.
+- Use mono for machine data.
+- Avoid zebra striping unless density requires it.
 
-Close button:   top-right corner, 24px square, icon ghost
-```
+### Badges
 
-**Badge / Tag:**
-```
-Padding:        2px 8px
-Radius:         radius-full
-Font:           text-xs, font-medium
-Colors:         background surface-3, text text-primary (default)
-                background accent-light, text text-inverse (accent)
-                background error, text white (danger)
-```
+- Use badges for run status, agent state, verification result, branch state, auth state, and risk level.
+- Keep badges compact.
+- Pair color with text, never color alone.
 
-**Sidebar / Navigation:**
-```
-Width:         280px (standard), 320px (expanded)
-Background:    surface-1
-Item height:   40px
-Item padding:  8px 12px
-Item radius:   radius-sm
-Item hover:    background surface-2
-Item active:   background accent-secondary, text accent-light, left-border 3px accent-primary
-Dividers:      1px border-secondary
-Section title: text-xs, font-semibold, text-tertiary, padding-top 12px, padding-left 12px
-```
+### Modals And Confirmations
 
-**Session / Tab-like Pattern:**
-```
-Tab container:  background surface-1, border-bottom 1px border-secondary
-Tab:            padding 8px 16px, height 36px, border-bottom 2px transparent
-Tab hover:      background surface-2
-Tab active:     border-bottom-color accent-primary, text accent-light
-Session pill:   background surface-2, padding 4px 12px, radius-sm, text-xs, border 1px border-secondary
-Session active: background accent-secondary, text accent-light
-```
+- Use modals for irreversible or high-risk choices.
+- Dialog copy should name the action and affected resource.
+- Prefer archive/stop/disable before delete where the product supports recovery.
+- Danger action must not be the default focused action.
 
-## Interactive States
+## Interaction States
 
-**Hover:**
-```
-Buttons:         opacity +10%, color darken 5%
-Cards:           background lighten 1%, border border-secondary
-Links:           text accent-light, underline
-```
+Every interactive element needs these states:
 
-**Focus:**
-```
-All interactive: 2px solid accent-primary outline, offset 2px, radius-sm
-Text inputs:     inset shadow 0 0 0 3px accent-light (opacity 20%)
-Keyboard:        always visible (do not :focus { outline: none; })
-```
+- Default
+- Hover
+- Active or pressed
+- Focus visible
+- Disabled
+- Loading or pending where async work exists
+- Error where user recovery is possible
 
-**Disabled:**
-```
-Buttons:         opacity 50%, cursor not-allowed
-Inputs:          opacity 50%, background surface-1, cursor not-allowed
-Text:            text-tertiary
-```
+Keyboard navigation must remain visible. Never remove focus indicators without a tokenized replacement.
 
-**Active / Pressed:**
-```
-Buttons:         background darker variant, scale 98%, shadow none
-Toggles:         background accent-dark, border accent-primary
-```
+## Motion
 
-**Error State:**
-```
-Input border:    2px error
-Input shadow:    inset 0 0 0 3px error (opacity 10%)
-Text message:    text-xs, color error, margin-top 4px
-```
+- Motion should clarify state changes, not decorate the page.
+- Standard transition: 150ms to 250ms.
+- Page or path drawing motion may run 600ms to 1200ms when it explains graph/execution flow.
+- Respect `prefers-reduced-motion`.
+- Hover glow is preferred over scale for brand CTAs.
+- Do not animate body text or cause layout shift.
 
-## Animation
+## Iconography
 
-**Timing:**
-```
-quick:      150ms  (hover states, tooltips)
-normal:     250ms  (modals, transitions)
-slow:       400ms  (page-level, complex animations)
-```
+- Use monoweight, geometric, slightly sharp icons.
+- Use existing icons from `brand/icons/` when possible.
+- Use trident tips, crescents, flame curves, nodes, and connection lines only as meaningful motifs.
+- Avoid emoji and whimsical icons in system UI.
+- Test logo and icon legibility at 24px minimum.
 
-**Easing:**
-```
-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1)  (standard)
-ease-out:    cubic-bezier(0, 0, 0.2, 1)    (exits)
-ease-in:     cubic-bezier(0.4, 0, 1, 1)    (enters)
-```
+## Logo Rules
 
-**Transitions:**
-```
-color:         250ms ease-in-out
-background:    250ms ease-in-out
-border:        250ms ease-in-out
-opacity:       150ms ease-in-out
-transform:     200ms ease-out (scale, translate only)
+- Hero and social: `brand/logo/opencoven-logo.svg` or canonical social assets.
+- Small dark UI: `brand/logo/opencoven-white.svg`.
+- Light backgrounds or print: `brand/logo/opencoven-black.svg`.
+- Technical diagrams: `brand/logo/opencoven-monoline.svg`.
+- Preserve aspect ratio and clear space.
+- Do not create new logo variants.
+
+## Accessibility
+
+- Hit targets should be large enough for pointer use: 32px minimum for dense tools, 40px preferred for primary actions.
+- Do not rely on color alone for status, risk, or selection.
+- Keep focus order predictable through rails, tabs, tables, dialogs, and inspectors.
+- Modals must trap focus while open and restore focus when closed.
+- Every icon-only control needs an accessible name and tooltip where helpful.
+
+## Verification
+
+Before claiming a UI or brand change follows this skill:
+
+- Check changed colors against `brand/ui/color-tokens.css`.
+- Check typography against `brand/ui/typography.css`.
+- Inspect desktop and mobile layouts when a visual surface changed.
+- Verify focus, hover, disabled, loading, empty, and error states for touched interactive components.
+- Run the smallest relevant project gate: typecheck, lint, build, screenshot, or direct visual inspection.
+- Record intentional exceptions in `docs/BRANDING-ADHERENCE.md`.
+
+## MUST
+
+- Use `DESIGN.md` and `brand/ui/*.css` as source of truth.
+- Build dark-first on pure black foundations.
+- Keep UI technical, minimal, and symbolic.
+- Use `OpenCoven`, `Coven`, and `coven` with their exact product meanings.
+- Keep purple controlled and meaningful.
+- Use tokenized colors and typography.
+- Provide visible focus states.
+- Provide empty, loading, disabled, error, and success states where applicable.
+- Gate destructive actions.
+- Preserve Archive/Summon/Sacrifice semantics in session UI.
+- Respect the Rust daemon as the authority boundary in trust-sensitive UI.
+- Keep dense operator surfaces scannable.
+- Use mono for operational data.
+
+## SHOULD
+
+- Use borders and spacing before shadows.
+- Prefer tabs, rails, split panes, inspectors, and command surfaces for harness workflows.
+- Use status badges for session/agent/tool state.
+- Keep page copy short and concrete.
+- Use diagrams to explain orchestration only when they clarify relationships.
+- Document any intentional exception in `docs/BRANDING-ADHERENCE.md`.
+
+## NEVER
+
+- Do not use light mode as the primary OpenCoven experience.
+- Do not use random gradients, noise textures, bokeh, or decorative blobs.
+- Do not overuse purple; it should feel intentional, not saturated.
+- Do not use blue, green, or red as brand accents.
+- Do not hide focus rings.
+- Do not use heavy blur/glass effects.
+- Do not use shadows as the main structure.
+- Do not make marketing heroes inside operator tools.
+- Do not add playful fonts, emoji UI, or novelty iconography.
+- Do not place text over complex backgrounds.
+- Do not create orphan color values when a token exists.
+
+## Prompt Pattern
+
+Use this pattern when assigning UI work to an agent:
+
+```markdown
+Build [surface/component] for OpenCoven.
+Follow skills/opencoven-design/SKILL.md and the canonical brand files:
+- DESIGN.md
+- brand/ui/color-tokens.css
+- brand/ui/typography.css
+
+The surface must include:
+- [required states]
+- [required interactions]
+- [data density / layout constraints]
+
+Do not invent new colors, logo variants, or decorative effects.
+Return changed files, verification run, and any brand exceptions.
 ```
 
-**Reduced Motion:**
-```
-@media (prefers-reduced-motion: reduce):
-  - all animations → 0ms (instant)
-  - all transitions → 0ms (instant)
-  - no transforms → instant repositioning
-```
+## Review Checklist
 
-## MUST (Absolute Requirements)
-
-- **DO use pure black (#000000) for backgrounds**, not #111111 or #1a1a1a elsewhere
-- **DO use violet accent (#7c3aed) for all focus rings and primary CTAs**
-- **DO NOT use random gradients or shadow effects** — flat design only
-- **DO use the exact font stack** (system fonts, then Courier for monospace)
-- **DO apply 4px grid spacing consistently** — all margins/padding in multiples of 4px
-- **DO preserve focus rings at all times** — keyboard navigation must be visible
-- **DO use the semantic color tokens exactly** — no arbitrary color values
-- **DO handle destructive actions with error color (#ef4444) and confirmation gates**
-- **DO maintain session/browser UI patterns** — tabs, history, forward/back paradigms where applicable
-- **DO NOT strip disabled or readonly states** — always show UI feedback for unavailable actions
-
-## SHOULD (Strong Recommendations)
-
-- **Prefer flat design over bevels, shadows, or 3D effects**
-- **Use dense layouts (cockpit-style) in admin/operator UIs** — tight grids, minimal spacing
-- **Apply the monospace font to code, logs, terminal output, and API responses**
-- **Use border-secondary (#1f1f1f) for subtle internal dividers, not border-primary**
-- **Consider table row heights: 40px for comfortable reading, 32px for dense data**
-- **Follow the text hierarchy:** heading-1 for page title, heading-2 for sections, heading-3 for subsections
-- **Animate transitions smoothly** (250ms default) when state changes, but respect reduced-motion
-- **Ensure modals and popovers have clear stacking** (backdrop, container, content layers)
-- **Use badges and tags for status/metadata** — prefer inline pills over separate UI elements
-- **Build sidebar navigation with clear active states** — always show current location
-
-## NEVER (Explicit Prohibitions)
-
-- **NEVER use light backgrounds or light mode styling** — pure dark theme only
-- **NEVER apply random colors, gradients, or glow effects** — violates the Coven aesthetic
-- **NEVER hide focus indicators** (no `outline: none` without replacement)
-- **NEVER use shadows as primary design elements** — flat only
-- **NEVER place text on complex backgrounds** — maintain contrast, flat backgrounds only
-- **NEVER use Comic Sans, cursive, or decorative fonts** — system fonts only
-- **NEVER break the 4px grid** — all spacing must be multiples of 4px
-- **NEVER skip error states or disabled states** — all interactive elements must show feedback
-- **NEVER hide destructive actions** — make them explicit with color + confirmation
-- **NEVER use emojis or whimsical icons in system UI** — stay professional and minimal
-- **NEVER apply animations to text transitions** — animate only position, opacity, and scale
-- **NEVER use blue, green, or red as primary accents** — violet (#7c3aed) only
-
-## Usage
-
-### In Prompts
-When building UI components, reference this skill:
-
-```
-You are building a Coven cockpit interface. Follow the OpenCoven Design System SKILL.md exactly.
-Build a session manager card showing:
-- Session ID (monospace)
-- Status badge (success/warning/error)
-- Delete button (destructive, confirmation required)
-```
-
-### In Code
-Include the design tokens at the top of your CSS/JS:
-
-```css
-:root {
-  --color-surface-0: #000000;
-  --color-surface-1: #0d0d0d;
-  --color-accent-primary: #7c3aed;
-  --font-primary: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Courier New", monospace;
-  --grid: 4px;
-}
-```
-
-### In Design Tools
-- **Figma:** Create component library matching these specs
-- **Lit/React:** Build styled components using these tokens
-- **Tailwind:** Extend config with Coven colors, spacing, and typography
-
-## Examples
-
-**Dense Dashboard (Cockpit Mode):**
-- Sidebar (280px) + main content (flex)
-- 4px grid spacing throughout
-- Row height 32px
-- Monospace for data cells
-- Accent-colored status badges
-
-**Modal with Destructive Action:**
-- Header with title, close button
-- Body with content
-- Footer with Cancel (secondary) + Delete (danger, 2px red border)
-- Confirmation: "Are you sure?" dialog required
-
-**Session List:**
-- Tab-like pills showing active session
-- Each row: session ID (monospace), status (badge), actions (buttons)
-- Hover: subtle background change, no animation
-- Delete: error-colored, opens confirmation modal
+- Colors come from `--oc-*` tokens or documented semantic aliases.
+- Typography uses `--oc-font-ui`, `--oc-font-display`, or `--oc-font-mono`.
+- Purple is limited to identity, focus, selected state, CTAs, and execution highlights.
+- Hover states glow or change border/surface; they do not scale layout.
+- Dense tools are scannable and not card-heavy.
+- Destructive actions are explicit and gated.
+- Focus, disabled, loading, empty, and error states are present.
+- Logo variant matches the surface.
+- Any exception is documented in `docs/BRANDING-ADHERENCE.md`.
 
 ---
 
-**Reviewed by:** Sage (Research) + Coven Team  
-**Last Updated:** 2026-05-10  
-**Version:** 1.0.0  
-**License:** MIT (OpenCoven)
+Last updated: 2026-05-10
+Version: 1.1.0
+License: MIT

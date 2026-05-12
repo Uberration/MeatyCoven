@@ -8,6 +8,8 @@ Node package wrapper for the native **Coven** CLI.
 
 Coven is the OpenCoven harness substrate: a local Rust CLI/daemon for project-scoped Codex, Claude Code, and future harness sessions.
 
+OpenCoven turns AI from a blank chatbox into a living workspace of agents that remember, coordinate, and belong to you. Coven is the local command layer for running those agent workflows inside explicit project boundaries.
+
 ```bash
 npx @opencoven/cli
 ```

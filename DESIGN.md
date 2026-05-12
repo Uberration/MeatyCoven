@@ -11,6 +11,20 @@
 
 A system where agents, tools, and workflows converge under intentional orchestration.
 
+OpenCoven is an open ecosystem for persistent AI familiars: named agents with memory, tools, identity, roles, and continuity. It moves AI beyond disposable chat sessions and toward durable, personal, intelligible systems that people can own, customize, and collaborate with over time.
+
+The value should be instantly clear: OpenCoven turns AI from a blank chatbox into a living workspace of agents that remember, coordinate, and belong to the user.
+
+### Vision
+Most AI today feels temporary: a user opens a chat, explains context, gets a response, and starts over. OpenCoven is built around a different future: AI that can stay.
+
+The next generation of AI should be durable, personal systems that remember what matters, understand their purpose, use tools, collaborate with other agents, and grow alongside the people and projects they serve.
+
+OpenCoven brings structure to the magic by combining memory, identity, orchestration, local execution, tool access, and multi-agent collaboration into an open framework people can inspect, customize, and own.
+
+### Philosophy
+A familiar is not a faceless bot. It has a name, purpose, memory, toolset, voice, role, and place in a larger workflow. It should feel personal without pretending to be human, powerful without becoming opaque, and extensible without collapsing into chaos.
+
 ### Brand Traits
 - **Arcane, but precise** — mystical without chaos
 - **Technical, not gimmicky** — substance over flair

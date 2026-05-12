@@ -6,6 +6,20 @@ The canonical OpenCoven brand system lives in [`../DESIGN.md`](../DESIGN.md). Im
 
 OpenCoven should feel like **collective intelligence + controlled power**: arcane but precise, technical not gimmicky, powerful not loud, minimal but symbolic.
 
+## Positioning
+
+OpenCoven is an open ecosystem for persistent AI familiars: named agents with memory, tools, identity, roles, and continuity.
+
+Most AI today feels temporary. You open a chat, explain your context, get a response, and start over. OpenCoven is built around a different future: AI that can **stay**.
+
+OpenCoven gives builders a way to create durable AI systems that remember what matters, understand their purpose, use tools, collaborate with other agents, and remain understandable over time. Each familiar can have a name, a voice, a memory, a toolset, a role, and a place in a larger workflow.
+
+The philosophy is simple: AI should be powerful without becoming opaque, personal without pretending to be human, and extensible without collapsing into chaos. OpenCoven brings structure to the magic through memory, identity, orchestration, local execution, tool access, and multi-agent collaboration.
+
+Use this as the high-level brand promise:
+
+> OpenCoven turns AI from a blank chatbox into a living workspace of agents that remember, coordinate, and belong to you.
+
 ## Brand asset pack
 
 | Asset | Purpose |

@@ -12,6 +12,10 @@
 </p>
 
 <p align="center">
+  OpenCoven turns AI from a blank chatbox into a living workspace of agents that remember, coordinate, and belong to you.
+</p>
+
+<p align="center">
   <a href="https://github.com/OpenCoven/coven/issues"><strong>Issues</strong></a>
   ·
   <a href="https://discord.gg/opencoven"><strong>Discord</strong></a>
@@ -82,6 +86,8 @@ If OpenClaw breaks, Coven gives you a predictable repair room: choose a repo, ch
 ## What it does
 
 Coven is the local harness substrate for OpenCoven. It does not replace your coding agent, your UI, or OpenClaw. It gives them a shared room where project work can happen visibly and safely.
+
+OpenCoven is an open ecosystem for persistent AI familiars: named agents with memory, tools, identity, roles, and continuity. Coven provides the local runtime layer for that vision: project-scoped sessions, harness-neutral execution, inspectable history, and explicit authority boundaries.
 
 - **Project-root boundaries** — every launch is tied to an explicit repository/project root.
 - **Harness-neutral runtime** — v0 focuses on Codex and Claude Code, with a clean adapter path for future harnesses.

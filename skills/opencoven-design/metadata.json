@@ -1,17 +1,17 @@
 {
-  "name": "OpenCoven Design System",
-  "description": "Opinionated design constraints for OpenCoven harness interfaces, cockpit UIs, and agent-built components",
-  "style": "Dark",
-  "accent": "Violet",
+  "name": "opencoven-design",
+  "description": "Agent-operable design constraints for OpenCoven, Coven, harness cockpits, docs, and integration surfaces",
+  "style": "dark",
+  "accent": "violet",
   "grid": "4px",
-  "framework": "Lit/React",
-  "version": "1.0.0",
+  "sourceOfTruth": "DESIGN.md",
+  "version": "1.1.0",
   "author": "OpenCoven Team",
   "license": "MIT",
-  "tags": ["design", "ui", "constraints", "dark-mode", "cockpit"],
+  "tags": ["design", "ui", "constraints", "dark-mode", "cockpit", "brand"],
   "colors": {
     "foundation": "black",
     "accent": "violet",
-    "palette": "87-color semantic system"
+    "palette": "OpenCoven --oc-* token system"
   }
 }
