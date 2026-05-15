@@ -94,6 +94,11 @@
                 "group": "Sessions and harnesses",
                 "pages": [
                   "SESSION-LIFECYCLE",
+                  "harnesses/index",
+                  "harnesses/codex",
+                  "harnesses/claude-code",
+                  "harnesses/installing",
+                  "harnesses/provider-auth",
                   "HARNESS-ADAPTERS",
                   "FUTURE-HARNESSES"
                 ]
