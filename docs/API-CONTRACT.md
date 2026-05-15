@@ -281,3 +281,21 @@ Shared non-success responses use the structured error envelope:
 2. Verify `apiVersion === "coven.daemon.v1"` and `capabilities.structuredErrors === true`.
 3. Check `capabilities.eventCursor === "sequence"` before using `afterSeq` pagination.
 4. Only then depend on the documented `v1` sessions/events shapes.
+
+## Future: Reserved endpoints for orchestration (Phase 1-4)
+
+The following endpoints are **reserved** for multi-harness orchestration features planned in Phases 1-4. They are not yet implemented but are documented here to preserve compatibility.
+
+**Phase 1 (Weeks 1-2): Handoff Protocol**
+- `POST /api/v1/handoff` — Initiate harness-to-harness handoff with context transfer
+- `GET /api/v1/handoff/:handoffId` — Check handoff status and retrieve results
+
+**Phase 2 (Weeks 3-4): Capability Discovery & Router**
+- `GET /api/v1/capabilities` — Discover available harness capabilities (code_fix, testing, research, etc.)
+- `POST /api/v1/task/execute` — Submit task with auto-routing to best-fit harness
+
+**Phase 3+ (Weeks 5-8): Multi-Instance & Audit**
+- `POST /api/v1/harness/register` — Register harness instance with load/health metadata
+- `GET /api/v1/handoffs` — Query handoff history for audit/compliance
+
+**Compatibility guarantee:** New endpoints will be additive; existing v1 endpoints (`/sessions`, `/events`) will not change.

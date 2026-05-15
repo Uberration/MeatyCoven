@@ -73,6 +73,11 @@ Later:
 - Additional harness adapters such as Hermes, Aider, Gemini, OpenCode, or user-defined local harnesses.
 - Policy/approval hooks for sensitive actions.
 - Richer session artifacts and attachments.
+- **Multi-harness orchestration** (Phase 1-4, TBD timeline):
+  - Phase 1: Handoff protocol and context transfer between harnesses
+  - Phase 2: Capability discovery and intelligent task routing
+  - Phase 3: Multi-instance coordination across harnesses
+  - Phase 4: Audit dashboard and compliance tooling
 - Optional cloud/team collaboration only after the local runtime is boringly reliable.
 
 ### comux
@@ -201,6 +206,38 @@ Status: **next/lab**
 - [ ] Coven owns the session and event log
 - [ ] comux shows the session for review
 - [ ] user explicitly merges, PRs, archives, or deletes work
+
+### Milestone F — Multi-Harness Orchestration (Phase 1-4)
+
+Status: **planned, TBD start**
+
+**Phase 1: Handoff Protocol (Weeks 1-2)**
+- [ ] Handoff API design and TypeScript implementation
+- [ ] Context transfer format and validation
+- [ ] Harness-to-harness explicit handoff (e.g., OpenClaw → Claude Code)
+- [ ] Handoff ledger (PostgreSQL)
+- [ ] End-to-end test: Cody hands off test failure to Claude for file editing
+
+**Phase 2: Capability Discovery & Router (Weeks 3-4)**
+- [ ] Harness capability registry and declaration
+- [ ] Task router: auto-select best-fit harness
+- [ ] Load balancing and fallback chains
+- [ ] SLA enforcement and timeout handling
+- [ ] Test: "Fix this bug" routes to best-fit harness automatically
+
+**Phase 3: Multi-Instance Coordination (Weeks 5-6)**
+- [ ] Distributed context store (Redis + PostgreSQL)
+- [ ] Harness registration and health heartbeat
+- [ ] Task affinity routing (resource constraints)
+- [ ] Scale to multiple Coven instances per user
+- [ ] Test: Local + remote harnesses coordinate without collision
+
+**Phase 4: Audit & Observability (Weeks 7-8)**
+- [ ] Audit dashboard: task timeline and handoff trace
+- [ ] Compliance export (redacted traces)
+- [ ] Prometheus metrics and alerting
+- [ ] Full visibility into orchestrated work
+- [ ] Test: Legal/compliance can query full history
 
 ## Discord transparency model
 
