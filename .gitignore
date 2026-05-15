@@ -1,5 +1,6 @@
 /target/
 /.coven/
+/.worktrees/
 .DS_Store
 *.log
 /.comux-hooks
