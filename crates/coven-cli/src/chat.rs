@@ -992,3 +992,113 @@ fn truncate_str(s: &str, max: usize) -> &str {
         &s[..end]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn app_with_agents(agents: Vec<AgentInfo>) -> App {
+        let active_agent = agents.iter().position(|agent| agent.available);
+        App {
+            messages: Vec::new(),
+            input: String::new(),
+            cursor_pos: 0,
+            scroll_offset: 0,
+            agents,
+            active_agent,
+            input_mode: InputMode::Normal,
+            agent_select_index: 0,
+            show_help: false,
+            spinner_frame: 0,
+            is_responding: false,
+            last_tick: Instant::now(),
+        }
+    }
+
+    fn agent(id: &str, available: bool) -> AgentInfo {
+        AgentInfo {
+            id: id.to_string(),
+            label: id.to_string(),
+            harness: id.to_string(),
+            available,
+        }
+    }
+
+    #[test]
+    fn chat_module_stays_single_file_to_avoid_rust_module_ambiguity() {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let split_module_dir = src.join("chat");
+        let split_rust_files = if split_module_dir.exists() {
+            std::fs::read_dir(&split_module_dir)
+                .unwrap()
+                .filter_map(|entry| entry.ok())
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().is_some_and(|ext| ext == "rs"))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+
+        assert!(src.join("chat.rs").is_file());
+        assert!(
+            !split_module_dir.join("mod.rs").exists(),
+            "keep chat in src/chat.rs; src/chat/mod.rs makes `mod chat;` ambiguous"
+        );
+        assert!(
+            split_rust_files.is_empty(),
+            "legacy split chat module files must not be restored: {split_rust_files:?}"
+        );
+    }
+
+    #[test]
+    fn unknown_slash_command_returns_command_name_for_feedback() {
+        let mut app = app_with_agents(vec![agent("codex", true)]);
+
+        match app.handle_slash_command("/unknown value") {
+            SlashCommandResult::Unknown(command) => assert_eq!(command, "/unknown"),
+            other => panic!("expected unknown command result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn handle_input_clears_unknown_slash_command_and_reports_it() {
+        let mut app = app_with_agents(vec![agent("codex", true)]);
+        app.input = "/missing".to_string();
+        app.cursor_pos = app.input.len();
+
+        let result = app.handle_input();
+
+        match result {
+            Some(SlashCommandResult::Unknown(command)) => assert_eq!(command, "/missing"),
+            other => panic!("expected unknown command result, got {other:?}"),
+        }
+        assert!(app.input.is_empty());
+        assert_eq!(app.cursor_pos, 0);
+    }
+
+    #[test]
+    fn agent_command_without_argument_opens_picker_on_active_agent() {
+        let mut app = app_with_agents(vec![agent("claude", false), agent("codex", true)]);
+
+        let result = app.handle_slash_command("/agent");
+
+        assert!(matches!(result, SlashCommandResult::Handled));
+        assert_eq!(app.input_mode, InputMode::AgentSelect);
+        assert_eq!(app.agent_select_index, 1);
+    }
+
+    #[test]
+    fn unavailable_agent_selection_keeps_current_active_agent() {
+        let mut app = app_with_agents(vec![agent("claude", false), agent("codex", true)]);
+
+        app.switch_agent_by_name("claude");
+
+        assert_eq!(app.active_agent, Some(1));
+        assert!(app
+            .messages
+            .last()
+            .map(|message| message.content.contains("claude is not available"))
+            .unwrap_or(false));
+    }
+}
