@@ -102,4 +102,4 @@ The dotted line worth noticing: Coven never connects to the OpenAI API itself. T
 
 - [Installing harness CLIs](/harnesses/installing)
 - [Provider auth boundary](/harnesses/provider-auth)
-- [Troubleshooting](/TROUBLESHOOTING)
+- [Troubleshooting](/TROUBLESHOOTING#harness-missing)

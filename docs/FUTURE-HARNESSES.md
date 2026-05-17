@@ -1,5 +1,9 @@
 ---
 title: "Future harness notes"
+summary: "Notes on what the Coven adapter seam must preserve before adding Hermes, Aider, Cline, Gemini CLI, or other future harness integrations."
+read_when:
+  - Checking why a harness is not supported yet
+  - Planning adapter research after Codex and Claude Code
 description: "Notes on what the Coven adapter seam must preserve before adding Hermes, Aider, Cline, Gemini CLI, or other future harness integrations."
 ---
 
@@ -95,4 +99,3 @@ flowchart LR
 ```
 
 A candidate moves from **Phase 1: research** to public v0 support only after clearing every stage in the [Harness adapters maturity checklist](/HARNESS-ADAPTERS#suggested-adapter-maturity-stages). The grid above is directional, not a promise.
-

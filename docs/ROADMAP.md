@@ -1,5 +1,9 @@
 ---
 title: "OpenCoven public roadmap"
+summary: "The OpenCoven public roadmap for Coven, comux, and OpenClaw integrations, with shipped, now, next, and later slices for the local agent runtime."
+read_when:
+  - Checking public project direction
+  - Separating shipped work from planned work
 description: "The OpenCoven public roadmap for Coven, comux, and OpenClaw integrations, with shipped, now, next, and later slices for the local agent runtime."
 ---
 
@@ -78,7 +82,7 @@ Later:
 - Additional harness adapters such as Hermes, Aider, Gemini, OpenCode, or user-defined local harnesses.
 - Policy/approval hooks for sensitive actions.
 - Richer session artifacts and attachments.
-- **Multi-harness orchestration** (Phase 1-4, TBD timeline):
+- **Multi-harness orchestration** (Phase 1-4, no committed timeline):
   - Phase 1: Handoff protocol and context transfer between harnesses
   - Phase 2: Capability discovery and intelligent task routing
   - Phase 3: Multi-instance coordination across harnesses
@@ -238,7 +242,7 @@ Status: **next/lab**
 
 ### Milestone F — Multi-harness orchestration (Phase 1-4)
 
-Status: **planned, TBD start**
+Status: **planned, no committed start date**
 
 **Phase 1: Handoff Protocol (Weeks 1-2)**
 - [ ] Handoff API design and TypeScript implementation

@@ -8,29 +8,20 @@ description: "Coven is a local-first runtime that supervises coding-agent CLIs i
 ---
 
 
-# Coven 🜨
-
-<p align="center">
-    <img
-        src="/assets/opencoven-black.svg"
-        alt="OpenCoven"
-        width="500"
-        class="dark:hidden"
-    />
-    <img
-        src="/assets/opencoven-white.svg"
-        alt="OpenCoven"
-        width="500"
-        class="hidden dark:block"
-    />
-</p>
-
-> _"Bring any familiar into the circle."_
-
-<p align="center">
-  <strong>OpenCoven is an open ecosystem for persistent AI familiars. Coven is the local runtime substrate that supervises every harness — Codex, Claude Code, and future Hermes, Aider, and Gemini CLIs — inside explicit project boundaries.</strong><br />
-  Launch a session, watch the PTY, attach later, archive when done. One daemon, one socket, every familiar on equal footing.
-</p>
+<div class="home-intro">
+  <img
+    class="home-intro-mark"
+    src="/assets/opencoven-icon.svg"
+    alt="OpenCoven"
+    width="88"
+    height="88"
+  />
+  <div>
+    <p class="home-intro-kicker"><strong>Bring any familiar into the circle.</strong></p>
+    <p><strong>OpenCoven is an open ecosystem for persistent AI familiars. Coven is the local runtime substrate that supervises every harness — Codex, Claude Code, and future Hermes, Aider, and Gemini CLIs — inside explicit project boundaries.</strong></p>
+    <p>Launch a session, watch the PTY, attach later, archive when done. One daemon, one socket, every familiar on equal footing.</p>
+  </div>
+</div>
 
 <Columns>
   <Card title="Get started" href="/GETTING-STARTED" icon="rocket">
@@ -198,5 +189,3 @@ coven daemon restart
     Current milestones, adapter direction, and public product boundaries.
   </Card>
 </Columns>
-
-

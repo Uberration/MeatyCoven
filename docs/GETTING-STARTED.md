@@ -1,5 +1,9 @@
 ---
 title: "Get started with Coven"
+summary: "Install Coven, launch your first project-scoped Codex or Claude Code session, and verify the daemon, store, and harnesses with coven doctor."
+read_when:
+  - Installing Coven for the first time
+  - Verifying a local Coven daemon and harness setup
 description: "Install Coven, launch your first project-scoped Codex or Claude Code session, and verify the daemon, store, and harnesses with coven doctor."
 ---
 

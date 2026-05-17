@@ -12,7 +12,7 @@ flowchart LR
   CLI --> Daemon[Coven daemon]
   Comux[comux] --> Daemon
   OpenMeow[OpenMeow] --> Daemon
-  Plugin[@opencoven/coven plugin] --> Daemon
+  Plugin["@opencoven/coven plugin"] --> Daemon
   Daemon --> Adapter[Adapter router]
   Adapter --> Codex[Codex PTY]
   Adapter --> Claude[Claude Code PTY]

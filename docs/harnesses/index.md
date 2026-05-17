@@ -78,5 +78,5 @@ If `coven doctor` reports a harness as missing, see [Installing harness CLIs](/h
 ## Related
 
 - [Provider auth boundary](/harnesses/provider-auth)
-- [Harness adapters](/HARNESS-ADAPTERS)
+- [Harness adapter guide](/HARNESS-ADAPTERS)
 - [Future harness notes](/FUTURE-HARNESSES)

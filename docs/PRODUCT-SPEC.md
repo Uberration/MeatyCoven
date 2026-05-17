@@ -1,5 +1,9 @@
 ---
 title: "Coven product spec"
+summary: "The Coven product thesis, MVP scope, harness direction, CLI/TUI surface, daemon API, and OpenClaw integration plan for the local agent runtime."
+read_when:
+  - Reviewing product scope and MVP boundaries
+  - Checking whether a docs claim matches current product intent
 description: "The Coven product thesis, MVP scope, harness direction, CLI/TUI surface, daemon API, and OpenClaw integration plan for the local agent runtime."
 ---
 
@@ -129,4 +133,3 @@ Use these exact public handles/links when Coven docs or package metadata mention
 
 - Discord: `discord.gg/opencoven`
 - X / Twitter: `@OpenCvn`
-

@@ -1,5 +1,9 @@
 ---
 title: "Session lifecycle"
+summary: "How a Coven session moves through created, running, completed, failed, orphaned, archived, and summoned states from coven run to replay."
+read_when:
+  - Understanding session states
+  - Implementing attach, archive, summon, or sacrifice behavior
 description: "How a Coven session moves through created, running, completed, failed, orphaned, archived, and summoned states from coven run to replay."
 ---
 

@@ -62,6 +62,5 @@ Coven exposes finished sessions as **comux JSON** — a stable record shape that
 
 ## Related
 
-- [Events](/sessions/events)
-- [API: sessions endpoints](/reference/api-sessions)
-- [API: events endpoint](/reference/api-events)
+- [Coven local API](/API)
+- [API contract](/API-CONTRACT)

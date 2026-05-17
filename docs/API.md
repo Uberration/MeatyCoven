@@ -1,5 +1,9 @@
 ---
 title: "Coven local socket API"
+summary: "The Coven local HTTP API served over a Unix socket: health, capabilities, actions, sessions, events, and input forwarding under /api/v1."
+read_when:
+  - Building a local Coven client
+  - Looking up /api/v1 endpoint behavior
 description: "The Coven local HTTP API served over a Unix socket: health, capabilities, actions, sessions, events, and input forwarding under /api/v1."
 ---
 

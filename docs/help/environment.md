@@ -48,4 +48,4 @@ TERM=xterm-256color coven tui
 |---|---|
 | `COVEN_HOME` | Overrides the default state directory (`~/.coven`). Use this to keep multiple Coven profiles on one machine, or to relocate state to a different disk. |
 
-See [Paths and state directories](/help/paths) for the default layout on each operating system.
+See [Getting started](/GETTING-STARTED) for the default setup flow and daemon checks.

@@ -1,5 +1,9 @@
 ---
 title: "Harness adapter guide"
+summary: "The harness adapter shape Coven uses today, the bar for adding new harnesses, and how Codex and Claude Code map onto the v0 adapter surface."
+read_when:
+  - Reviewing supported harness behavior
+  - Evaluating a future harness adapter
 description: "The harness adapter shape Coven uses today, the bar for adding new harnesses, and how Codex and Claude Code map onto the v0 adapter surface."
 ---
 

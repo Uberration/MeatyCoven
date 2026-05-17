@@ -22,7 +22,7 @@ header { background: rgba(0, 0, 0, 0.82); border-bottom-color: var(--oc-border-s
 h1 { letter-spacing: var(--oc-tracking-hero); }
 .section-kicker, .eyebrow, .manager-pill, .console-status { letter-spacing: var(--oc-tracking-label); }
 .brand-mark, .footer-mark, .console-logo { border-color: rgba(167, 139, 255, 0.22); background: var(--oc-black); }
-.logo { color: var(--oc-purple-3); }
+.logo { color: var(--oc-white); }
 .button { transform: none !important; transition: background .2s ease, border-color .2s ease, box-shadow .2s ease, color .2s ease; }
 .button:hover, .button:active { transform: none !important; }
 .button-primary { background: var(--oc-purple-2); color: var(--oc-white); border: 1px solid rgba(167,139,255,.42); box-shadow: 0 0 0 1px rgba(167,139,255,.12), 0 0 34px rgba(124,92,255,.18); }

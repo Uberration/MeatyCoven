@@ -1,5 +1,9 @@
 ---
 title: "Coven safety model"
+summary: "Coven's local-first safety boundary: trust the Rust daemon, treat clients as untrusted, and keep harness provider credentials out of the runtime."
+read_when:
+  - Reviewing local safety and trust assumptions
+  - Adding a client, bridge, or automation path
 description: "Coven's local-first safety boundary: trust the Rust daemon, treat clients as untrusted, and keep harness provider credentials out of the runtime."
 ---
 

@@ -1,3 +1,12 @@
+---
+summary: "Canonical OpenCoven brand rules, asset locations, package logo copies, and product positioning for Coven docs and public surfaces."
+read_when:
+  - Using OpenCoven brand assets
+  - Checking Coven docs and package copy against the brand system
+title: "OpenCoven brand system"
+description: "Canonical OpenCoven brand rules, asset locations, package logo copies, and product positioning for Coven docs and public surfaces."
+---
+
 # OpenCoven Brand System
 
 The canonical OpenCoven brand system lives in [`DESIGN.md`](https://github.com/OpenCoven/coven/blob/main/DESIGN.md). Implementation assets live in [`brand/`](https://github.com/OpenCoven/coven/tree/main/brand).
@@ -20,23 +29,22 @@ Use this as the high-level brand promise:
 
 > OpenCoven turns AI from a blank chatbox into a living workspace of agents that remember, coordinate, and belong to you.
 
-## Brand asset pack
+## Approved logo
+
+Use the black-background logo with the white icon on every public docs, README, package, and site surface. Do not swap in gradient, mark-only, black-only, monoline, or external avatar images.
 
 | Asset | Purpose |
 | --- | --- |
-| [`brand/logo/opencoven-logo.svg`](https://github.com/OpenCoven/coven/blob/main/brand/logo/opencoven-logo.svg) | Full-gradient primary logo for hero and social use |
-| [`brand/logo/opencoven-mark.svg`](https://github.com/OpenCoven/coven/blob/main/brand/logo/opencoven-mark.svg) | Mark-only vector |
-| [`brand/logo/opencoven-white.svg`](https://github.com/OpenCoven/coven/blob/main/brand/logo/opencoven-white.svg) | Solid white logo for small dark surfaces |
-| [`brand/logo/opencoven-black.svg`](https://github.com/OpenCoven/coven/blob/main/brand/logo/opencoven-black.svg) | Solid black logo for light surfaces |
-| [`brand/logo/opencoven-monoline.svg`](https://github.com/OpenCoven/coven/blob/main/brand/logo/opencoven-monoline.svg) | Technical diagrams and docs |
+| [`docs/assets/opencoven-icon.svg`](https://github.com/OpenCoven/coven/blob/main/docs/assets/opencoven-icon.svg) | Public docs logo, favicon, and generated docs metadata |
+| [`assets/opencoven/opencoven.svg`](https://github.com/OpenCoven/coven/blob/main/assets/opencoven/opencoven.svg) | Root README and shared package-logo source |
 | [`brand/ui/color-tokens.css`](https://github.com/OpenCoven/coven/blob/main/brand/ui/color-tokens.css) | Canonical color tokens |
 | [`brand/ui/typography.css`](https://github.com/OpenCoven/coven/blob/main/brand/ui/typography.css) | Canonical font stacks and tracking |
-| [`brand/social/opencoven-og.png`](https://github.com/OpenCoven/coven/blob/main/brand/social/opencoven-og.png) | Social preview / OG image |
+| [`brand/social/opencoven-og.png`](https://github.com/OpenCoven/coven/blob/main/brand/social/opencoven-og.png) | Social preview image; regenerate it when the approved logo changes |
 | [`brand/docs/BRAND-USAGE.md`](https://github.com/OpenCoven/coven/blob/main/brand/docs/BRAND-USAGE.md) | Contributor-facing usage checklist |
 
-## Legacy raster icon pack
+## Raster icon pack
 
-The existing raster icon pack remains available in [`assets/opencoven`](https://github.com/OpenCoven/coven/tree/main/assets/opencoven) for package README compatibility and platform slots. Treat `brand/logo` as canonical for new vector work.
+The existing raster icon pack remains available in [`assets/opencoven`](https://github.com/OpenCoven/coven/tree/main/assets/opencoven) for platform slots. The raster exports should depict the same black-background, white-icon logo.
 
 ## Package copies
 

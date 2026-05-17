@@ -269,12 +269,12 @@ Keyboard navigation must remain visible. Never remove focus indicators without a
 
 ## Logo Rules
 
-- Hero and social: `brand/logo/opencoven-logo.svg` or canonical social assets.
-- Small dark UI: `brand/logo/opencoven-white.svg`.
-- Light backgrounds or print: `brand/logo/opencoven-black.svg`.
-- Technical diagrams: `brand/logo/opencoven-monoline.svg`.
+- Public surfaces use the approved black-background, white-icon logo.
+- Use `assets/opencoven/opencoven.svg` as the shared SVG source.
+- Use `docs/assets/opencoven-icon.svg` for the generated docs site.
+- Package READMEs use package-local copies of the approved SVG.
 - Preserve aspect ratio and clear space.
-- Do not create new logo variants.
+- Do not create, publish, or link alternate public logo variants.
 
 ## Accessibility
 
@@ -363,11 +363,11 @@ Return changed files, verification run, and any brand exceptions.
 - Dense tools are scannable and not card-heavy.
 - Destructive actions are explicit and gated.
 - Focus, disabled, loading, empty, and error states are present.
-- Logo variant matches the surface.
+- Logo usage stays on the approved black-background, white-icon asset.
 - Any exception is documented in `docs/BRANDING-ADHERENCE.md`.
 
 ---
 
-Last updated: 2026-05-10
+Last updated: 2026-05-17
 Version: 1.1.0
 License: MIT

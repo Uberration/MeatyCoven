@@ -1,5 +1,9 @@
 ---
 title: "Coven operational model"
+summary: "How the Coven Rust daemon stays the authority boundary for project roots, PTY launch, sessions, events, and policy across all local clients."
+read_when:
+  - Reviewing Coven's authority boundary
+  - Deciding what policy belongs in clients versus the daemon
 description: "How the Coven Rust daemon stays the authority boundary for project roots, PTY launch, sessions, events, and policy across all local clients."
 ---
 

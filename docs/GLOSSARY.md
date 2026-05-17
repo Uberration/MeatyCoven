@@ -1,5 +1,9 @@
 ---
 title: "Coven glossary"
+summary: "Definitions for Coven terms: ACP, API version, archive, capability, client, comux, harness, project root, ritual, sacrifice, session, and summon."
+read_when:
+  - Looking up Coven terminology
+  - Aligning docs, CLI copy, and client labels
 description: "Definitions for Coven terms: ACP, API version, archive, capability, client, comux, harness, project root, ritual, sacrifice, session, and summon."
 ---
 

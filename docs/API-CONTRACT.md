@@ -1,5 +1,9 @@
 ---
 title: "Coven local API contract (coven.daemon.v1)"
+summary: "The versioned coven.daemon.v1 contract under /api/v1: health negotiation, capability discovery, error envelopes, and additive compatibility rules."
+read_when:
+  - Pinning a client to the daemon contract
+  - Checking stable API shapes and error envelopes
 description: "The versioned coven.daemon.v1 contract under /api/v1: health negotiation, capability discovery, error envelopes, and additive compatibility rules."
 ---
 

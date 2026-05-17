@@ -1,5 +1,9 @@
 ---
 title: "Troubleshoot Coven"
+summary: "Diagnose Coven issues like missing coven commands, daemon socket errors, harness not found, orphaned sessions, and project-root rejections."
+read_when:
+  - Diagnosing a broken Coven setup
+  - Interpreting coven doctor output
 description: "Diagnose Coven issues like missing coven commands, daemon socket errors, harness not found, orphaned sessions, and project-root rejections."
 ---
 

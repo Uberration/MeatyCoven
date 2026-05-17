@@ -27,7 +27,7 @@ flowchart LR
   Daemon --> Control[Control plane: capability discovery + action routing]
   Control --> Policy[Policy + permission hints]
   Control --> AdapterBus[Adapter/event bus]
-  AdapterBus -. desktop.automation .-> DesktopUse[desktop-use adapters]
+  AdapterBus -. desktop automation .-> DesktopUse[desktop-use adapters]
 
   Daemon --> Boundary[Project-root + cwd guard]
   Boundary --> Adapter[Harness adapter router]

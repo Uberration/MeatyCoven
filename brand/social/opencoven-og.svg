@@ -7,7 +7,7 @@
   </defs>
   <rect width="1200" height="630" fill="#000000"/>
   <circle cx="600" cy="300" r="292" fill="url(#glow)"/>
-  <!-- Canonical OpenCoven logo from brand/logo/opencoven-logo.svg, color-inverted for white-on-black. Background path omitted for seamless OG compositing. -->
+  <!-- Approved OpenCoven logo treatment: white icon on black. Background path omitted for seamless OG compositing. -->
   <g transform="translate(485 54) scale(0.101)">
 <path fill="#FFFFFF" opacity="1.000000" stroke="none"
 	d="

@@ -55,23 +55,18 @@ A familiar is not a faceless bot. It has a name, purpose, memory, toolset, voice
 - **Clear space:** margin = height of inner flame tip
 - **Aspect ratio:** preserve exact proportions across all variants
 
-### Logo Variants
+### Approved Logo
 
-| Variant | Use Case | Notes |
-|---------|----------|-------|
-| Full Gradient (Primary) | Landing pages, social banners, hero sections | #6E4BFF → #A78BFF linear |
-| Solid White | Apple icons, small sizes, dark backgrounds | #ffffff only |
-| Solid Black | Light backgrounds, print | #000000 only |
-| Monoline (Optional) | Dev docs, diagrams, technical contexts | Single stroke, no fill |
+The approved public logo is the sigil as a white icon on a black square background. Use it for docs, README, package READMEs, landing chrome, favicons, avatars, and small identity surfaces.
 
-### Logo Files (Canonical Locations)
+Do not substitute gradient, mark-only, black-only, monoline, or external avatar images in public surfaces.
+
+### Logo Files
 ```
-/brand/logo/
-  ├── opencoven-logo.svg          # Full gradient (primary)
-  ├── opencoven-mark.svg          # Mark only (square crop)
-  ├── opencoven-white.svg         # Solid white variant
-  ├── opencoven-black.svg         # Solid black variant
-  └── opencoven-monoline.svg      # Outline / technical variant
+/assets/opencoven/opencoven.svg       # Shared approved SVG source
+/docs/assets/opencoven-icon.svg       # Public docs copy
+/packages/cli/assets/opencoven.svg    # Package-local copy
+/packages/openclaw-coven/assets/opencoven.svg
 ```
 
 ---
@@ -192,7 +187,7 @@ A familiar is not a faceless bot. It has a name, purpose, memory, toolset, voice
 
 #### Hero Section
 - **Background:** Pure black (#000000)
-- **Content:** Centered glowing sigil (logo)
+- **Content:** Centered approved logo
 - **Glow effect:** Subtle radial purple (#8A63FF with opacity gradient)
 - **Breathing animation:** 2–3s loop, soft pulse
 
@@ -272,7 +267,7 @@ Orchestrate Intelligence
 ### GitHub
 
 **Profile Avatar**
-- Same as X avatar (white logo on black)
+- Same as X avatar
 
 **README Structure**
 ```markdown
@@ -409,7 +404,7 @@ animation: breathe 2.5s ease-in-out infinite;
 - Mix serif/sans fonts carelessly
 - Use colored shadows or noise textures
 - Scale logo below 24px without testing
-- Create multiple variants of logo (stick to the 4 defined ones)
+- Create or publish alternate public logo variants
 - Add transparency overlays that muddy the palette
 - Use the accent blue for general UI (reserve for actionable states)
 
@@ -454,18 +449,14 @@ animation: breathe 2.5s ease-in-out infinite;
 - [ ] Apply color tokens to all `<code>`, `<pre>` blocks
 - [ ] Update button styles: purple accents, no gradients
 - [ ] Ensure all headings use tight tracking
-- [ ] Logo in header/footer: correct variant for background
+- [ ] Logo in header/footer: approved black-background, white-icon asset
 
 ### File Structure Template
 
 ```
 /brand
   /logo
-    ├── opencoven-logo.svg          # Full gradient primary
-    ├── opencoven-mark.svg          # Mark only
-    ├── opencoven-white.svg         # Solid white
-    ├── opencoven-black.svg         # Solid black
-    └── opencoven-monoline.svg      # Outline variant
+    └── source variants retained for asset work, not public docs/package usage
 
   /icons
     ├── agent-node.svg
@@ -519,11 +510,9 @@ letter-spacing: -0.02em;
 ```
 
 ### Logo Usage
-- **Landing hero:** Full gradient variant
-- **Small icons/badges:** White solid variant
-- **Dark backgrounds:** White solid variant
-- **Light backgrounds:** Black solid variant
-- **Diagrams:** Monoline variant
+- **All public surfaces:** Approved black-background, white-icon asset
+- **Small icons/badges:** Approved black-background, white-icon asset
+- **Docs and diagrams:** Use the approved logo only when a logo is needed; diagrams otherwise use plain labels and lines
 
 ### Adding New Icons
 1. Check `/brand/icons/` for existing similar icon

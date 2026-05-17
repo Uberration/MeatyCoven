@@ -1,5 +1,9 @@
 ---
 title: "Архитектура среды выполнения Coven"
+summary: "Как Rust-демон, CLI, TUI, кокпит comux и плагин OpenClaw в Coven компонуются вокруг локального socket API, PTY-адаптеров и хранилища событий."
+read_when:
+  - Понять топологию среды выполнения Coven
+  - Спроектировать клиент вокруг локального socket API
 description: "Как Rust-демон, CLI, TUI, кокпит comux и плагин OpenClaw в Coven компонуются вокруг локального socket API, PTY-адаптеров и хранилища событий."
 ---
 
@@ -25,7 +29,7 @@ flowchart LR
   Daemon --> Control[Control plane: capability discovery + action routing]
   Control --> Policy[Policy + permission hints]
   Control --> AdapterBus[Adapter/event bus]
-  AdapterBus -. desktop.automation .-> DesktopUse[desktop-use adapters]
+  AdapterBus -. desktop automation .-> DesktopUse[desktop-use adapters]
 
   Daemon --> Boundary[Project-root + cwd guard]
   Boundary --> Adapter[Harness adapter router]

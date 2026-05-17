@@ -1,6 +1,10 @@
 ---
 title: "Arquitectura del runtime de Coven"
-description: "Cómo el daemon en Rust, la CLI, la TUI y el plugin OpenClaw se componen alrededor de la API por socket local, los adaptadores PTY y el almacén de eventos."
+summary: "Cómo se componen el daemon en Rust, la CLI, la TUI, el cockpit comux y el plugin OpenClaw de Coven alrededor de la API por socket local, los adaptadores PTY y el almacén de eventos."
+read_when:
+  - Entender la topología del runtime de Coven
+  - Diseñar un cliente alrededor de la API por socket local
+description: "Cómo se componen el daemon en Rust, la CLI, la TUI, el cockpit comux y el plugin OpenClaw de Coven alrededor de la API por socket local, los adaptadores PTY y el almacén de eventos."
 ---
 
 # Arquitectura de Coven
@@ -25,7 +29,7 @@ flowchart LR
   Daemon --> Control[Control plane: capability discovery + action routing]
   Control --> Policy[Policy + permission hints]
   Control --> AdapterBus[Adapter/event bus]
-  AdapterBus -. desktop.automation .-> DesktopUse[desktop-use adapters]
+  AdapterBus -. desktop automation .-> DesktopUse[desktop-use adapters]
 
   Daemon --> Boundary[Project-root + cwd guard]
   Boundary --> Adapter[Harness adapter router]

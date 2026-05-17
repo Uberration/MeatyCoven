@@ -1,5 +1,9 @@
 ---
 title: "comux and Coven demo loop"
+summary: "The Coven-side contract for making Codex and Claude Code sessions discoverable as visible comux panes through the local socket API."
+read_when:
+  - Demonstrating Coven sessions in comux
+  - Validating the session discovery contract
 description: "The Coven-side contract for making Codex and Claude Code sessions discoverable as visible comux panes through the local socket API."
 ---
 
@@ -112,4 +116,3 @@ Clients should keep their core UI usable when Coven is missing or stopped:
 ## Roadmap
 
 The broader OpenCoven roadmap remains the public tracking point for the end-to-end demo: [ROADMAP.md](/ROADMAP).
-

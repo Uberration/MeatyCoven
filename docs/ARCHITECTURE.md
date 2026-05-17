@@ -1,5 +1,9 @@
 ---
 title: "Coven runtime architecture"
+summary: "How the Coven Rust daemon, CLI, TUI, comux cockpit, and OpenClaw plugin compose around the local socket API, PTY adapters, and event store."
+read_when:
+  - Understanding the Coven runtime topology
+  - Designing a client around the local socket API
 description: "How the Coven Rust daemon, CLI, TUI, comux cockpit, and OpenClaw plugin compose around the local socket API, PTY adapters, and event store."
 ---
 
@@ -25,7 +29,7 @@ flowchart LR
   Daemon --> Control[Control plane: capability discovery + action routing]
   Control --> Policy[Policy + permission hints]
   Control --> AdapterBus[Adapter/event bus]
-  AdapterBus -. desktop.automation .-> DesktopUse[desktop-use adapters]
+  AdapterBus -. desktop automation .-> DesktopUse[desktop-use adapters]
 
   Daemon --> Boundary[Project-root + cwd guard]
   Boundary --> Adapter[Harness adapter router]

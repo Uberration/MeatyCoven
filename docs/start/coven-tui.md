@@ -137,7 +137,6 @@ coven attach <session-id>
 
 These verbs produce stable, scriptable output and are the same ones the TUI ultimately routes to.
 
-
 ## Related
 
 - [Get started with Coven](/GETTING-STARTED)

@@ -1,5 +1,9 @@
 ---
 title: "Client integration guide"
+summary: "How comux, OpenMeow, OpenClaw, and other clients should talk to the Coven daemon socket API without duplicating runtime policy or authority."
+read_when:
+  - Integrating a UI or bridge with Coven
+  - Avoiding client-side policy drift
 description: "How comux, OpenMeow, OpenClaw, and other clients should talk to the Coven daemon socket API without duplicating runtime policy or authority."
 ---
 

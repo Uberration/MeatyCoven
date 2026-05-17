@@ -49,13 +49,36 @@ function uniquePages() {
   return [...new Set(collectPages(config.navigation ?? {}))];
 }
 
+function flattenNavigation() {
+  const entries = [];
+
+  for (const language of config.navigation?.languages ?? []) {
+    for (const tab of language.tabs ?? []) {
+      for (const group of tab.groups ?? []) {
+        for (const page of group.pages ?? []) {
+          if (typeof page !== 'string') continue;
+          entries.push({
+            language: language.language,
+            tab: tab.tab,
+            group: group.group,
+            page,
+            url: pageUrl(page)
+          });
+        }
+      }
+    }
+  }
+
+  return entries;
+}
+
 function pageToMarkdownPath(page) {
   const normalized = page.replace(/^\/+/, '').replace(/\.md$/, '');
   return path.join(rootDir, `${normalized}.md`);
 }
 
 function pageUrl(page) {
-  const normalized = page.replace(/^\/+/, '').replace(/\/index$/, '');
+  const normalized = page.replace(/^\/+/, '').replace(/\.md$/, '').replace(/\/index$/, '');
   return normalized === 'index' ? '/' : `/${normalized}`;
 }
 
@@ -87,6 +110,10 @@ function escapeHtml(value) {
     .replaceAll('"', '&quot;');
 }
 
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("'", '&#39;');
+}
+
 function ensureCleanDist() {
   fs.rmSync(distDir, { recursive: true, force: true });
   fs.mkdirSync(distDir, { recursive: true });
@@ -97,14 +124,122 @@ function copyIfExists(from, to) {
   fs.cpSync(from, to, { recursive: true });
 }
 
+function copyPublicAssets() {
+  const assetsDir = path.join(distDir, 'assets');
+  fs.mkdirSync(assetsDir, { recursive: true });
+  fs.copyFileSync(
+    path.join(rootDir, 'assets', 'opencoven-icon.svg'),
+    path.join(assetsDir, 'opencoven-icon.svg')
+  );
+}
+
 function validatePage(page, markdownPath, rawContent) {
   if (!fs.existsSync(markdownPath)) {
     throw new Error(`Navigation page "${page}" does not exist at ${path.relative(rootDir, markdownPath)}`);
   }
 
+  const { data } = matter(rawContent);
+  for (const field of ['title', 'summary', 'read_when']) {
+    if (!data[field] || (field === 'read_when' && (!Array.isArray(data[field]) || data[field].length === 0))) {
+      throw new Error(`Navigation page "${page}" is missing frontmatter field "${field}"`);
+    }
+  }
+
   if (/\bStub\s+[—-]\s+fill in\b/.test(rawContent)) {
     throw new Error(`Navigation page "${page}" is still a scaffold stub`);
   }
+
+  const publicPlaceholder = /\b(Image asset prompt|lorem ipsum|FIXME|coming soon|TBD)\b/i;
+  if (publicPlaceholder.test(rawContent)) {
+    throw new Error(`Navigation page "${page}" contains placeholder or unsituated copy`);
+  }
+}
+
+function readAttrs(rawAttrs) {
+  const attrs = {};
+  const attrPattern = /([A-Za-z0-9_-]+)="([^"]*)"/g;
+  let match;
+
+  while ((match = attrPattern.exec(rawAttrs))) {
+    attrs[match[1]] = match[2];
+  }
+
+  return attrs;
+}
+
+function dedent(markdown) {
+  const lines = markdown.replace(/^\n+|\n+$/g, '').split('\n');
+  const indents = lines
+    .filter((line) => line.trim())
+    .map((line) => line.match(/^ */)?.[0].length ?? 0);
+  const minIndent = indents.length ? Math.min(...indents) : 0;
+
+  if (minIndent <= 0) {
+    return lines.join('\n').trim();
+  }
+
+  return lines.map((line) => line.slice(minIndent)).join('\n').trim();
+}
+
+function renderInnerMarkdown(markdown) {
+  return md.render(renderMintlifyBlocks(dedent(markdown)));
+}
+
+function renderCards(markdown) {
+  return markdown.replace(/<Columns>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/Columns>/g, (_match, body) => {
+    const cards = body.replace(/<Card\b([^>]*)>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/Card>/g, (_card, rawAttrs, cardBody) => {
+      const attrs = readAttrs(rawAttrs);
+      const title = escapeHtml(attrs.title || 'Untitled');
+      const content = renderInnerMarkdown(cardBody);
+
+      if (attrs.href) {
+        return `<a class="doc-card" href="${escapeAttr(attrs.href)}"><span class="doc-card-title">${title}</span><div class="doc-card-copy">${content}</div></a>`;
+      }
+
+      return `<section class="doc-card"><span class="doc-card-title">${title}</span><div class="doc-card-copy">${content}</div></section>`;
+    });
+
+    return `<div class="doc-grid">${cards}</div>`;
+  });
+}
+
+function renderSteps(markdown) {
+  return markdown.replace(/<Steps>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/Steps>/g, (_match, body) => {
+    const steps = body.replace(/<Step\b([^>]*)>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/Step>/g, (_step, rawAttrs, stepBody) => {
+      const attrs = readAttrs(rawAttrs);
+      const title = escapeHtml(attrs.title || 'Step');
+      return `<li class="doc-step"><div class="doc-step-body"><h3>${title}</h3>${renderInnerMarkdown(stepBody)}</div></li>`;
+    });
+
+    return `<ol class="doc-steps">${steps}</ol>`;
+  });
+}
+
+function renderTabs(markdown) {
+  return markdown.replace(/<Tabs>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/Tabs>/g, (_match, body) => {
+    const tabs = body.replace(/<Tab\b([^>]*)>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/Tab>/g, (_tab, rawAttrs, tabBody) => {
+      const attrs = readAttrs(rawAttrs);
+      const title = escapeHtml(attrs.title || 'Tab');
+      return `<section class="doc-tab"><h3>${title}</h3>${renderInnerMarkdown(tabBody)}</section>`;
+    });
+
+    return `<div class="doc-tabs">${tabs}</div>`;
+  });
+}
+
+function renderCallouts(markdown) {
+  return markdown.replace(/<(Tip|Note|Info|Warning|Frame)>(?:\r?\n)?([\s\S]*?)(?:\r?\n)?<\/\1>/g, (_match, kind, body) => {
+    return `<aside class="doc-callout doc-callout-${kind.toLowerCase()}">${renderInnerMarkdown(body)}</aside>`;
+  });
+}
+
+function renderMintlifyBlocks(markdown) {
+  let rendered = markdown;
+  rendered = renderCards(rendered);
+  rendered = renderSteps(rendered);
+  rendered = renderTabs(rendered);
+  rendered = renderCallouts(rendered);
+  return rendered;
 }
 
 function processPage(page) {
@@ -115,14 +250,83 @@ function processPage(page) {
   const { data, content } = matter(raw);
   const title = data.title || firstHeading(content) || 'Untitled';
   const description = data.description || data.summary || firstParagraph(content) || '';
-  const html = md.render(content);
+  const html = md.render(renderMintlifyBlocks(content));
 
-  return { page, title, description, html };
+  return { page, title, description, html, url: pageUrl(page), hasH1: /^#\s+.+$/m.test(content) };
 }
 
-function renderPage(doc) {
+function renderNavList(entries, currentUrl) {
+  let previousLanguage = '';
+  let previousTab = '';
+  let previousGroup = '';
+  let html = '<nav class="docs-nav" aria-label="Documentation">';
+
+  for (const entry of entries) {
+    if (entry.language !== previousLanguage) {
+      if (previousGroup) html += '</ul>';
+      if (previousTab) html += '</section>';
+      if (previousLanguage) html += '</section>';
+      html += `<section class="docs-nav-language"><h2>${escapeHtml(entry.language.toUpperCase())}</h2>`;
+      previousLanguage = entry.language;
+      previousTab = '';
+      previousGroup = '';
+    }
+
+    if (entry.tab !== previousTab) {
+      if (previousGroup) html += '</ul>';
+      if (previousTab) html += '</section>';
+      html += `<section class="docs-nav-tab"><h3>${escapeHtml(entry.tab)}</h3>`;
+      previousTab = entry.tab;
+      previousGroup = '';
+    }
+
+    if (entry.group !== previousGroup) {
+      if (previousGroup) html += '</ul>';
+      html += `<p>${escapeHtml(entry.group)}</p><ul>`;
+      previousGroup = entry.group;
+    }
+
+    const active = entry.url === currentUrl ? ' aria-current="page"' : '';
+    html += `<li><a href="${escapeAttr(entry.url)}"${active}>${escapeHtml(entry.title)}</a></li>`;
+  }
+
+  if (previousGroup) html += '</ul>';
+  if (previousTab) html += '</section>';
+  if (previousLanguage) html += '</section>';
+  html += '</nav>';
+
+  return html;
+}
+
+function renderTopLinks() {
+  return (config.navbar?.links ?? [])
+    .map((link) => `<a href="${escapeAttr(link.href)}">${escapeHtml(link.label)}</a>`)
+    .join('');
+}
+
+function renderPageNav(doc, entries) {
+  const index = entries.findIndex((entry) => entry.page === doc.page);
+  const previous = index > 0 ? entries[index - 1] : null;
+  const next = index >= 0 && index < entries.length - 1 ? entries[index + 1] : null;
+
+  if (!previous && !next) return '';
+
+  return `<nav class="page-nav" aria-label="Previous and next pages">
+    ${previous ? `<a href="${escapeAttr(previous.url)}"><span>Previous</span>${escapeHtml(previous.title)}</a>` : '<span></span>'}
+    ${next ? `<a href="${escapeAttr(next.url)}"><span>Next</span>${escapeHtml(next.title)}</a>` : '<span></span>'}
+  </nav>`;
+}
+
+function languageForPage(page) {
+  if (page.startsWith('es/')) return 'es';
+  if (page.startsWith('ru/')) return 'ru';
+  return 'en';
+}
+
+function renderPage(doc, entries) {
+  const nav = renderNavList(entries, doc.url);
   return `<!doctype html>
-<html lang="en">
+<html lang="${escapeAttr(languageForPage(doc.page))}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -132,9 +336,31 @@ function renderPage(doc) {
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <main data-pagefind-body>
+  <header class="site-header">
+    <a class="brand-link" href="/">
+      <img src="/assets/opencoven-icon.svg" alt="" width="32" height="32">
+      <span>${escapeHtml(config.name)} Docs</span>
+    </a>
+    <nav class="site-links" aria-label="Project links">
+      ${renderTopLinks()}
+    </nav>
+  </header>
+  <div class="mobile-nav">
+    <details>
+      <summary>Docs menu</summary>
+      ${nav}
+    </details>
+  </div>
+  <div class="docs-layout">
+    <aside class="sidebar">
+      ${nav}
+    </aside>
+    <main class="doc-content" data-pagefind-body>
+      ${doc.hasH1 ? '' : `<h1>${escapeHtml(doc.title)}</h1>`}
 ${doc.html}
-  </main>
+      ${renderPageNav(doc, entries)}
+    </main>
+  </div>
 </body>
 </html>`;
 }
@@ -142,20 +368,25 @@ ${doc.html}
 console.log(`Building ${config.name} documentation...`);
 
 ensureCleanDist();
-copyIfExists(path.join(rootDir, 'assets'), path.join(distDir, 'assets'));
+copyPublicAssets();
 copyIfExists(path.join(rootDir, 'style.css'), path.join(distDir, 'style.css'));
 copyIfExists(path.join(rootDir, 'nav-tabs-underline.js'), path.join(distDir, 'nav-tabs-underline.js'));
 
 const pages = uniquePages();
 console.log(`Found ${pages.length} navigation pages`);
 
-let processedCount = 0;
+const docs = pages.map(processPage);
+const docByPage = new Map(docs.map((doc) => [doc.page, doc]));
+const navEntries = flattenNavigation().map((entry) => ({
+  ...entry,
+  title: docByPage.get(entry.page)?.title || entry.page
+}));
+
 for (const page of pages) {
-  const doc = processPage(page);
+  const doc = docByPage.get(page);
   const outPath = outputPathForPage(page);
   fs.mkdirSync(path.dirname(outPath), { recursive: true });
-  fs.writeFileSync(outPath, renderPage(doc));
-  processedCount++;
+  fs.writeFileSync(outPath, renderPage(doc, navEntries));
 }
 
 fs.writeFileSync(
@@ -171,5 +402,5 @@ fs.writeFileSync(
   )
 );
 
-console.log(`Built ${processedCount} public pages`);
+console.log(`Built ${docs.length} public pages`);
 console.log(`Output: ${distDir}`);
