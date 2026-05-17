@@ -67,11 +67,9 @@ flowchart TB
 
 | Command | Flags |
 |---|---|
-| `coven run` | `--cwd <path>`, `--title <text>`, `--json`, `--detach` |
+| `coven run` | `--cwd <path>`, `--title <text>`, `--detach` |
 | `coven sessions` | `--plain`, `--json`, `--all`, `--manage` |
-| `coven attach` | `--follow` (default), `--no-follow` (replay only) |
 | `coven sacrifice` | `--yes` (required) |
-| `coven daemon start` | `--coven-home <path>` (overrides `$COVEN_HOME`) |
 | `coven pc kill` | `--confirm` (required) |
 | `coven pc cache clear` | `--confirm` (required) |
 | `coven pc top` | `--n <N>`, `--verbose` |
@@ -86,16 +84,7 @@ flowchart TB
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| `0` | Success. |
-| `1` | Generic CLI error (bad argv, unknown subcommand). |
-| `2` | Validation error (outside-root cwd, unknown harness id). |
-| `3` | Daemon unavailable (socket missing or unhealthy). |
-| `4` | Destructive action refused (missing `--yes` / `--confirm`, or target is live). |
-| `>=10` | Reserved for future structured exit codes; current builds may not emit these yet. |
-
-The `coven attach` command exits with the underlying session's exit code when the session is no longer live, so scripts can pipe `coven run … && coven attach <id>` and observe the harness's own status.
+Current builds return `0` for success and a non-zero error for failed CLI execution. Structured, command-specific exit codes are reserved for a future release.
 
 ## Related
 

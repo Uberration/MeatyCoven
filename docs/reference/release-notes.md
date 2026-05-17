@@ -12,6 +12,7 @@ title: "Coven changelog and release notes"
 
 - **No more double keystrokes in the Windows TUI.** `coven tui` and the session browser now filter to key-press events only on Windows, so typing `a` no longer inserts `aa`, arrow keys advance one row at a time, and Enter activates a selection once. No behavior change on macOS or Linux. See [Coven TUI](/start/coven-tui) and [Windows install](/install/windows).
 - **TUI no longer panics on small terminals.** Both `coven tui` and `coven chat` now guard their layout math against very small terminal sizes, so resizing to a narrow or short window no longer crashes the session. See [Coven TUI](/start/coven-tui).
+- **Release gate hygiene.** The public-release secret guard now allows public GitHub advisory URLs and scans release history from `HEAD`, so stale remote branches do not block the current release gate.
 
 ### Security
 
@@ -21,8 +22,8 @@ title: "Coven changelog and release notes"
 
 ### Updates
 
-- **Brand-aligned TUI theme.** Both `coven tui` and `coven chat` now share a unified, brand-aligned palette with consistent semantic tokens for primary, agent, user, hint, surface, and dim styles. Colors adapt to your terminal automatically: truecolor on 24-bit terminals, 256-color on legacy terminals, and no color when output is piped or `NO_COLOR` is set. See [Environment variables](/help/environment).
-- **Documented terminal color controls.** The environment variables that drive Coven's color output (`NO_COLOR`, `COLORTERM`, `TERM`) are now documented with examples for disabling color in CI, forcing truecolor, and selecting a 256-color render. See [Environment variables](/help/environment).
+- **Brand-aligned TUI theme.** Both `coven tui` and `coven chat` now share a unified, brand-aligned palette with consistent semantic tokens for primary, agent, user, hint, surface, and dim styles. Colors adapt to your terminal automatically: truecolor on 24-bit terminals, 256-color on legacy terminals, and no color when output is piped or `NO_COLOR` is set. See [Troubleshooting](/TROUBLESHOOTING).
+- **Documented terminal color controls.** The environment variables that drive Coven's color output (`NO_COLOR`, `COLORTERM`, `TERM`) are now documented with examples for disabling color in CI, forcing truecolor, and selecting a 256-color render. See [Troubleshooting](/TROUBLESHOOTING).
 
 ### Bug fixes
 

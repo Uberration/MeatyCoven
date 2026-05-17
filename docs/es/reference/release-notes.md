@@ -12,6 +12,7 @@ title: "Changelog y notas de release de Coven"
 
 - **Se acabaron las pulsaciones dobles en la TUI de Windows.** `coven tui` y el navegador de sesiones ahora filtran únicamente los eventos de pulsación de tecla en Windows, de modo que escribir `a` ya no inserta `aa`, las flechas avanzan una fila por pulsación y Enter activa la selección una sola vez. No hay cambios de comportamiento en macOS ni en Linux. Consulta [Coven TUI](/start/coven-tui) e [Instalación en Windows](/install/windows).
 - **La TUI ya no se cae en terminales pequeñas.** Tanto `coven tui` como `coven chat` ahora protegen sus cálculos de layout frente a tamaños de terminal muy pequeños, de modo que redimensionar a una ventana estrecha o baja ya no provoca el cierre de la sesión. Consulta [Coven TUI](/start/coven-tui).
+- **Higiene de gates de release.** El guard de secretos de release pública ahora permite URLs públicas de avisos de GitHub y escanea el historial de release desde `HEAD`, para que ramas remotas obsoletas no bloqueen el gate actual.
 
 ### Seguridad
 
@@ -21,7 +22,7 @@ title: "Changelog y notas de release de Coven"
 
 ### Actualizaciones
 
-- **Tema TUI alineado con la marca.** Tanto `coven tui` como `coven chat` ahora comparten una paleta unificada y alineada con la marca, con tokens semánticos consistentes para los estilos primary, agent, user, hint, surface y dim. Los colores se adaptan a tu terminal automáticamente: truecolor en terminales de 24 bits, 256 colores en terminales legacy, y sin color cuando la salida está canalizada o `NO_COLOR` está configurado. Consulta [Variables de entorno](/help/environment).
+- **Tema TUI alineado con la marca.** Tanto `coven tui` como `coven chat` ahora comparten una paleta unificada y alineada con la marca, con tokens semánticos consistentes para los estilos primary, agent, user, hint, surface y dim. Los colores se adaptan a tu terminal automáticamente: truecolor en terminales de 24 bits, 256 colores en terminales legacy, y sin color cuando la salida está canalizada o `NO_COLOR` está configurado. Consulta [Troubleshooting](/TROUBLESHOOTING).
 
 ## Cómo leer este changelog
 

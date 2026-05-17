@@ -96,6 +96,11 @@ def is_public_repo_url_like_token(token: str) -> bool:
     )
 
 
+def is_github_advisory_url_like_token(token: str) -> bool:
+    normalized = token.strip("/")
+    return normalized.startswith("github.com/advisories/GHSA-")
+
+
 def scan_text(text: str, path: str) -> list[tuple[str, int, str]]:
     hits: list[tuple[str, int, str]] = []
     for line_number, line in enumerate(text.splitlines(), 1):
@@ -105,7 +110,10 @@ def scan_text(text: str, path: str) -> list[tuple[str, int, str]]:
                 hits.append((path, line_number, name))
         if allow:
             continue
-        if OPENCOVEN_GITHUB_URL.search(line) or OPENCOVEN_LOCAL_WORKTREE.search(line):
+        if (
+            OPENCOVEN_GITHUB_URL.search(line)
+            or OPENCOVEN_LOCAL_WORKTREE.search(line)
+        ):
             continue
         if is_known_safe_lockfile_line(path, line):
             continue
@@ -113,7 +121,11 @@ def scan_text(text: str, path: str) -> list[tuple[str, int, str]]:
             token = match.group(0)
             if re.fullmatch(r"[0-9a-f]{32,64}", token):
                 continue
-            if is_local_path_like_token(token) or is_public_repo_url_like_token(token):
+            if (
+                is_local_path_like_token(token)
+                or is_public_repo_url_like_token(token)
+                or is_github_advisory_url_like_token(token)
+            ):
                 continue
             if entropy(token) >= 4.3:
                 hits.append((path, line_number, "high_entropy"))
@@ -142,8 +154,8 @@ def tracked_file_hits() -> list[tuple[str, int, str]]:
     return hits
 
 
-def history_blob_hits() -> list[tuple[str, str, int, str]]:
-    rows = sh("git", "rev-list", "--objects", "--all").splitlines()
+def history_blob_hits(ref: str = "HEAD") -> list[tuple[str, str, int, str]]:
+    rows = sh("git", "rev-list", "--objects", ref).splitlines()
     hits: list[tuple[str, str, int, str]] = []
     seen: set[str] = set()
     for row in rows:

@@ -394,7 +394,7 @@ fn run_magical_tui() -> Result<()> {
         io::stdout().flush().context("failed to flush Coven menu")?;
 
         if let Event::Key(key) = event::read().context("failed to read Coven menu input")? {
-            if key.kind == KeyEventKind::Release {
+            if !is_key_press(key.kind) {
                 continue;
             }
             match key.code {
@@ -689,7 +689,7 @@ fn run_session_browser(include_archived: bool) -> Result<()> {
             .context("failed to flush Coven session browser")?;
 
         match event::read().context("failed to read session browser input")? {
-            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+            Event::Key(key) if is_key_press(key.kind) => match key.code {
                 KeyCode::Up | KeyCode::Char('k') => {
                     selected_session = move_session_browser_selection(
                         selected_session,
@@ -1010,6 +1010,10 @@ fn move_session_browser_selection(
         }
         SessionBrowserMove::Down | SessionBrowserMove::NextAction => (current + 1) % item_count,
     }
+}
+
+fn is_key_press(kind: KeyEventKind) -> bool {
+    kind == KeyEventKind::Press
 }
 
 fn session_browser_session_row_to_index(
@@ -2441,6 +2445,13 @@ mod tests {
     fn successful_http_response_accepts_2xx_only() {
         assert!(ensure_successful_http_response("HTTP/1.1 202 Accepted\r\n\r\n{}").is_ok());
         assert!(ensure_successful_http_response("HTTP/1.1 409 Conflict\r\n\r\n{}").is_err());
+    }
+
+    #[test]
+    fn tui_key_handling_accepts_press_events_only() {
+        assert!(is_key_press(KeyEventKind::Press));
+        assert!(!is_key_press(KeyEventKind::Repeat));
+        assert!(!is_key_press(KeyEventKind::Release));
     }
 
     #[test]

@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import pathlib
 import unittest
+from unittest import mock
 
 SCRIPT = pathlib.Path(__file__).with_name("check-secrets.py")
 spec = importlib.util.spec_from_file_location("check_secrets", SCRIPT)
@@ -101,6 +102,57 @@ class SecretGuardLockfileTests(unittest.TestCase):
         hits = check_secrets.scan_text(text, "docs/BRAND.md")
 
         self.assertEqual(hits, [])
+
+    def test_github_advisory_links_do_not_trigger_high_entropy(self) -> None:
+        text = (
+            "Resolved advisory "
+            "https://github.com/advisories/GHSA-rhfx-m35p-ff5j in the release notes."
+        )
+
+        hits = check_secrets.scan_text(text, "docs/reference/changelog.md")
+
+        self.assertEqual(hits, [])
+
+    def test_high_entropy_tokens_detected_on_lines_with_advisory_links(self) -> None:
+        token = "m9R3tQv7WzK2pL5nX8cF1gJ4sD6hY0aB/EuIqOwPz9RkTlVxCyNmS3HdG7fA"
+        text = (
+            "Resolved advisory https://github.com/advisories/GHSA-rhfx-m35p-ff5j "
+            f"and observed token {token}."
+        )
+
+        hits = check_secrets.scan_text(text, "docs/reference/changelog.md")
+
+        self.assertEqual(hits, [("docs/reference/changelog.md", 1, "high_entropy")])
+
+    def test_history_scan_uses_head_for_rev_list_by_default(self) -> None:
+        calls: list[tuple[str, ...]] = []
+
+        def fake_sh(*args: str) -> str:
+            calls.append(args)
+            if args[:3] == ("git", "rev-list", "--objects"):
+                return ""
+            raise AssertionError(f"unexpected sh call: {args}")
+
+        with mock.patch.object(check_secrets, "sh", side_effect=fake_sh):
+            hits = check_secrets.history_blob_hits()
+
+        self.assertEqual(hits, [])
+        self.assertEqual(calls, [("git", "rev-list", "--objects", "HEAD")])
+
+    def test_history_scan_uses_supplied_ref_for_rev_list(self) -> None:
+        calls: list[tuple[str, ...]] = []
+
+        def fake_sh(*args: str) -> str:
+            calls.append(args)
+            if args[:3] == ("git", "rev-list", "--objects"):
+                return ""
+            raise AssertionError(f"unexpected sh call: {args}")
+
+        with mock.patch.object(check_secrets, "sh", side_effect=fake_sh):
+            hits = check_secrets.history_blob_hits("origin/main")
+
+        self.assertEqual(hits, [])
+        self.assertEqual(calls, [("git", "rev-list", "--objects", "origin/main")])
 
     def test_base64_like_values_still_trigger_high_entropy(self) -> None:
         token = "m9R3tQv7WzK2pL5nX8cF1gJ4sD6hY0aB/EuIqOwPz9RkTlVxCyNmS3HdG7fA"
