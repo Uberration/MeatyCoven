@@ -334,25 +334,30 @@ function renderPage(doc, entries) {
   <meta name="description" content="${escapeHtml(doc.description)}">
   <link rel="icon" href="${escapeHtml(config.favicon)}">
   <link rel="stylesheet" href="/style.css">
+  <script src="/sidebar-nav.js" defer></script>
 </head>
 <body>
   <header class="site-header">
-    <a class="brand-link" href="/">
-      <img src="/assets/opencoven-icon.svg" alt="" width="32" height="32">
-      <span>${escapeHtml(config.name)} Docs</span>
-    </a>
+    <div class="header-left">
+      <button class="sidebar-trigger" type="button" aria-label="Toggle docs navigation" aria-controls="docs-sidebar" aria-expanded="true" data-sidebar-trigger>
+        <span class="sidebar-trigger-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+      </button>
+      <a class="brand-link" href="/">
+        <img src="/assets/opencoven-icon.svg" alt="" width="32" height="32">
+        <span>${escapeHtml(config.name)} Docs</span>
+      </a>
+    </div>
     <nav class="site-links" aria-label="Project links">
       ${renderTopLinks()}
     </nav>
   </header>
-  <div class="mobile-nav">
-    <details>
-      <summary>Docs menu</summary>
-      ${nav}
-    </details>
-  </div>
   <div class="docs-layout">
-    <aside class="sidebar">
+    <div class="sidebar-overlay" data-sidebar-overlay hidden></div>
+    <aside class="sidebar" id="docs-sidebar" aria-label="Documentation navigation">
+      <div class="sidebar-panel-header">
+        <span>Docs</span>
+        <button class="sidebar-close" type="button" aria-label="Close docs navigation" data-sidebar-close>Close</button>
+      </div>
       ${nav}
     </aside>
     <main class="doc-content" data-pagefind-body>
@@ -371,6 +376,7 @@ ensureCleanDist();
 copyPublicAssets();
 copyIfExists(path.join(rootDir, 'style.css'), path.join(distDir, 'style.css'));
 copyIfExists(path.join(rootDir, 'nav-tabs-underline.js'), path.join(distDir, 'nav-tabs-underline.js'));
+copyIfExists(path.join(rootDir, 'sidebar-nav.js'), path.join(distDir, 'sidebar-nav.js'));
 
 const pages = uniquePages();
 console.log(`Found ${pages.length} navigation pages`);

@@ -128,7 +128,7 @@ function validateInternalLink(page, rawUrl, publicUrls) {
   }
 
   const url = rawUrl.split('#')[0].replace(/\/$/, '') || '/';
-  if (url === '/style.css' || url.startsWith('/assets/')) {
+  if (url === '/style.css' || url === '/sidebar-nav.js' || url.startsWith('/assets/')) {
     const assetPath = path.join(rootDir, url);
     if (!fs.existsSync(assetPath)) {
       throw new Error(`${page} links to missing asset: ${rawUrl}`);
