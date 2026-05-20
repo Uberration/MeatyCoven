@@ -34,6 +34,19 @@ title: "Coven changelog and release notes"
 - **Avoid full event-log scan for the `cast.summary` existence check.** Cast now uses a fast `event_kind_exists` query instead of fetching every event for a session every time it writes a summary.
 - **Resolved a duplicate `list_events` fetch** during cast attach's summary lookup — the existing replay history is reused.
 
+### Security
+
+- **Provenance-attested releases (v0.0.16+).** Every Coven npm tarball — `@opencoven/cli`, `@opencoven/cli-macos`, `@opencoven/cli-linux-x64`, `@opencoven/cli-windows` — now ships with a [SLSA v1](https://slsa.dev/spec/v1.0/provenance) provenance attestation cryptographically linking the published bytes to the exact GitHub Actions workflow run, source commit SHA, and signed git tag that produced them. Verify your install end-to-end:
+
+  ```sh
+  npm install @opencoven/cli@0.0.16
+  npm audit signatures
+  ```
+
+  Tampering at any layer between the workflow's build and your install breaks the chain and `npm audit signatures` fails. The published versions also carry a "Provenance" badge on each package's npm page linking back to the run that produced them.
+- **Tag-driven release pipeline; no rotatable npm credentials in CI.** Releases are now triggered exclusively by pushing a GPG/SSH-signed annotated `v*` tag (`git tag -s vX.Y.Z -m "..." && git push origin vX.Y.Z`). The workflow refuses to build unless GitHub has cryptographically verified the tag signature. Authentication to npm is via [trusted publishing](https://docs.npmjs.com/trusted-publishers) over GitHub Actions OIDC, so the legacy `NPM_ACCESS_TOKEN` has been deleted from the `npm-publish` environment — token expiry, leakage, and rotation are no longer release-blocking concerns. See [Releasing Coven to npm](/reference/releasing) for the new operator flow.
+- **Hardened release workflow.** All third-party actions in `.github/workflows/release-npm.yml` (`actions/checkout`, `actions/setup-node`, `actions/upload-artifact`, `actions/download-artifact`, `dtolnay/rust-toolchain`) are pinned to immutable commit SHAs per OpenSSF guidance. The workflow runs with `permissions: contents: read` by default and only the publish job escalates to `id-token: write` for the OIDC handshake. A `release-npm-${{ github.ref }}` concurrency group prevents overlapping releases from interleaving on the registry.
+
 ## Week of May 17, 2026
 
 ### Bug fixes
