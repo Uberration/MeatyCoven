@@ -339,7 +339,6 @@ impl App {
         self.is_responding = true;
         let result = LaunchRequest::for_current_dir(harness, prompt)
             .and_then(|request| self.client.launch_session(request));
-        self.is_responding = false;
         match result {
             Ok(session) => {
                 self.active_session_id = Some(session.id.clone());
@@ -351,17 +350,22 @@ impl App {
                 ));
                 self.poll_session_events();
             }
-            Err(error) => self.push_system_message(&format!("Daemon launch failed: {error}")),
+            Err(error) => {
+                self.is_responding = false;
+                self.push_system_message(&format!("Daemon launch failed: {error}"));
+            }
         }
     }
 
     fn forward_input_to_session(&mut self, session_id: &str, raw: &str) {
         self.is_responding = true;
         let result = self.client.send_input(session_id, &format!("{raw}\n"));
-        self.is_responding = false;
         match result {
             Ok(()) => self.poll_session_events(),
-            Err(error) => self.push_system_message(&format!("Input rejected: {error}")),
+            Err(error) => {
+                self.is_responding = false;
+                self.push_system_message(&format!("Input rejected: {error}"));
+            }
         }
     }
 
@@ -462,7 +466,13 @@ impl App {
                 }
                 self.push_system_message(&format!("Session {status}."));
             }
-            "kill" => self.push_system_message("Session kill recorded."),
+            "kill" => {
+                if self.active_session_id.as_deref() == Some(event.session_id.as_str()) {
+                    self.active_session_id = None;
+                    self.is_responding = false;
+                }
+                self.push_system_message("Session kill recorded.");
+            }
             _ => {}
         }
     }
@@ -999,6 +1009,31 @@ mod tests {
     }
 
     #[test]
+    fn launched_chat_session_stays_responding_until_exit_event() {
+        let client = RecordingChatClient::default();
+        let (mut app, _) = app_with_client(client);
+        app.input = "summarize the repo".to_string();
+        app.cursor_pos = app.input.len();
+
+        app.handle_input();
+
+        let session_id = app.active_session_id().expect("session should be active");
+        assert!(app.is_responding);
+
+        app.push_event_message(&EventRecord {
+            seq: 1,
+            id: "event-1".to_string(),
+            session_id,
+            kind: "exit".to_string(),
+            payload_json: serde_json::json!({ "status": "completed" }).to_string(),
+            created_at: "2026-05-19T00:00:00Z".to_string(),
+        });
+
+        assert_eq!(app.active_session_id(), None);
+        assert!(!app.is_responding);
+    }
+
+    #[test]
     fn completed_chat_session_clears_active_session_so_next_message_launches_cleanly() {
         let client = RecordingChatClient::default();
         let (mut app, _) = app_with_client(client);
@@ -1010,6 +1045,26 @@ mod tests {
             session_id: "session-1".to_string(),
             kind: "exit".to_string(),
             payload_json: serde_json::json!({ "status": "completed" }).to_string(),
+            created_at: "2026-05-19T00:00:00Z".to_string(),
+        });
+
+        assert_eq!(app.active_session_id(), None);
+        assert!(!app.is_responding);
+    }
+
+    #[test]
+    fn kill_event_clears_active_session_so_next_message_launches_cleanly() {
+        let client = RecordingChatClient::default();
+        let (mut app, _) = app_with_client(client);
+        app.active_session_id = Some("session-1".to_string());
+        app.is_responding = true;
+
+        app.push_event_message(&EventRecord {
+            seq: 1,
+            id: "event-1".to_string(),
+            session_id: "session-1".to_string(),
+            kind: "kill".to_string(),
+            payload_json: serde_json::json!({ "status": "killed" }).to_string(),
             created_at: "2026-05-19T00:00:00Z".to_string(),
         });
 
