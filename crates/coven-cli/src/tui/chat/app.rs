@@ -591,7 +591,7 @@ impl App {
                     );
                     return SlashCommandResult::Handled;
                 };
-                if let Some(session) = self.run_harness_prompt(plan_harness.harness.id(), &prompt) {
+                if let Some(session) = self.run_harness_prompt(plan_harness.harness.id(), prompt) {
                     if should_keep_launch_inline(&plan) {
                         self.push_system_message(&format_cast_outcome_for_chat(
                             plan_harness.harness.label(),
