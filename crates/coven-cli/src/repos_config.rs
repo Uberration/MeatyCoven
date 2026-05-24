@@ -1,0 +1,171 @@
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use serde::Deserialize;
+
+pub const REPOS_CONFIG_FILE_NAME: &str = "repos.toml";
+
+#[derive(Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct ReposConfig {
+    pub default: Option<String>,
+    #[serde(default)]
+    pub repos: BTreeMap<String, RepoEntry>,
+}
+
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub struct RepoEntry {
+    pub path: PathBuf,
+}
+
+pub fn config_path(coven_home: &Path) -> PathBuf {
+    coven_home.join(REPOS_CONFIG_FILE_NAME)
+}
+
+pub fn load(coven_home: &Path) -> Result<ReposConfig> {
+    load_from(&config_path(coven_home))
+}
+
+fn load_from(path: &Path) -> Result<ReposConfig> {
+    match std::fs::read_to_string(path) {
+        Ok(raw) => {
+            toml::from_str(&raw).with_context(|| format!("failed to parse {}", path.display()))
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(ReposConfig::default()),
+        Err(err) => Err(err).with_context(|| format!("failed to read {}", path.display())),
+    }
+}
+
+impl ReposConfig {
+    pub fn resolve(&self, name: &str) -> Option<PathBuf> {
+        self.repos.get(name).map(|entry| expand_tilde(&entry.path))
+    }
+
+    pub fn default_name(&self) -> Option<&str> {
+        self.default.as_deref()
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = (&str, PathBuf)> + '_ {
+        self.repos
+            .iter()
+            .map(|(name, entry)| (name.as_str(), expand_tilde(&entry.path)))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.repos.is_empty()
+    }
+}
+
+fn expand_tilde(path: &Path) -> PathBuf {
+    let Some(s) = path.to_str() else {
+        return path.to_path_buf();
+    };
+    if let Some(rest) = s.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME").filter(|v| !v.is_empty()) {
+            return PathBuf::from(home).join(rest);
+        }
+    } else if s == "~" {
+        if let Some(home) = std::env::var_os("HOME").filter(|v| !v.is_empty()) {
+            return PathBuf::from(home);
+        }
+    }
+    path.to_path_buf()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn missing_file_returns_empty_config() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let config = load(temp.path())?;
+        assert_eq!(config, ReposConfig::default());
+        assert!(config.is_empty());
+        assert!(config.default_name().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn loads_named_repos() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            config_path(temp.path()),
+            r#"
+default = "alpha"
+
+[repos.alpha]
+path = "/abs/alpha"
+
+[repos.beta]
+path = "/abs/beta"
+"#,
+        )?;
+
+        let config = load(temp.path())?;
+
+        assert_eq!(config.default_name(), Some("alpha"));
+        assert_eq!(
+            config.resolve("alpha"),
+            Some(PathBuf::from("/abs/alpha"))
+        );
+        assert_eq!(config.resolve("beta"), Some(PathBuf::from("/abs/beta")));
+        assert_eq!(config.resolve("missing"), None);
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_expands_leading_tilde() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            config_path(temp.path()),
+            r#"
+[repos.home_relative]
+path = "~/projects/example"
+"#,
+        )?;
+
+        let prior_home = std::env::var_os("HOME");
+        // Safety: tests in this crate run single-threaded enough for HOME swap.
+        std::env::set_var("HOME", "/tmp/fake-home");
+        let resolved = load(temp.path())?.resolve("home_relative");
+        match prior_home {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+
+        assert_eq!(resolved, Some(PathBuf::from("/tmp/fake-home/projects/example")));
+        Ok(())
+    }
+
+    #[test]
+    fn entries_iterates_in_sorted_order() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(
+            config_path(temp.path()),
+            r#"
+[repos.beta]
+path = "/abs/beta"
+[repos.alpha]
+path = "/abs/alpha"
+"#,
+        )?;
+        let config = load(temp.path())?;
+        let names: Vec<&str> = config.entries().map(|(name, _)| name).collect();
+        assert_eq!(names, vec!["alpha", "beta"]);
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_toml_surfaces_parse_error() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        fs::write(config_path(temp.path()), "this is not = valid toml [")?;
+        let err = load(temp.path()).unwrap_err();
+        assert!(
+            err.to_string().contains("failed to parse"),
+            "unexpected error: {err:?}"
+        );
+        Ok(())
+    }
+}

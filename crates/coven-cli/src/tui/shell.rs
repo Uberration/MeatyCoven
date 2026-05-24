@@ -28,7 +28,7 @@ use super::{is_key_press, sessions};
 use crate::{
     archive_session_command, attach_session, coven_home_dir, coven_store_path, current_timestamp,
     daemon, default_harness_id, project, prompt_for_optional_line, prompt_for_required_line,
-    run_daemon_command, run_doctor, run_patch_openclaw, run_session, sacrifice_session_command,
+    run_daemon_command, run_doctor, run_patch, run_session, sacrifice_session_command,
     store, summon_only_command, theme, DaemonCommand, RUNNING_SESSION_STATUS,
 };
 
@@ -442,7 +442,7 @@ fn dispatch_cast_plan(plan: CastPlan) -> Result<()> {
             CastOutcome::for_request(request_text)
         }
         CastIntent::PatchOpenClaw => {
-            run_patch_openclaw(vec![], None, None, None, false, false, true)?;
+            run_patch(None, vec![], None, None, None, false, false, true)?;
             CastOutcome::for_request(request_text)
         }
         CastIntent::Quest { goal } => dispatch_cast_quest(&plan, &goal)?,
@@ -1602,7 +1602,7 @@ fn run_magical_tui_action(action: MagicalTuiAction) -> Result<()> {
         MagicalTuiAction::DaemonStatus => run_daemon_command(DaemonCommand::Status),
         MagicalTuiAction::RunHarness => run_guided_harness_session(),
         MagicalTuiAction::PatchOpenClaw => {
-            run_patch_openclaw(vec![], None, None, None, false, false, true)
+            run_patch(None, vec![], None, None, None, false, false, true)
         }
         MagicalTuiAction::Sessions => sessions::run_browser(false),
         MagicalTuiAction::AllSessions => sessions::run_browser(true),

@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::openclaw_repo::{GitState, OpenClawRepo};
+use crate::openclaw_repo::{GitState, RepoHandle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VerificationProfile {
@@ -84,8 +84,8 @@ impl fmt::Display for HarnessId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PatchOpenClawRequest {
-    pub repo: OpenClawRepo,
+pub struct PatchRequest {
+    pub repo: RepoHandle,
     pub git_state: GitState,
     pub issue: String,
     pub harness_id: HarnessId,
@@ -95,14 +95,14 @@ pub struct PatchOpenClawRequest {
     pub keep_session: bool,
 }
 
-impl PatchOpenClawRequest {
+impl PatchRequest {
     pub fn issue(&self) -> &str {
         self.issue.trim()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PatchOpenClawReport {
+pub struct PatchReport {
     pub status: String,
     pub session_id: String,
     pub changed_files: Vec<String>,
@@ -111,12 +111,12 @@ pub struct PatchOpenClawReport {
 
 const FILE_LIST_LIMIT: usize = 20;
 
-pub fn build_repair_brief(request: &PatchOpenClawRequest) -> String {
+pub fn build_repair_brief(request: &PatchRequest) -> String {
     let dirty = format_file_list(&request.git_state.dirty_files);
     let untracked = format_file_list(&request.git_state.untracked_files);
 
     format!(
-        "You are repairing a local OpenClaw source checkout through Coven.\n\n\
+        "You are repairing a local {repo_name} source checkout through Coven.\n\n\
         Repository: {repo}\n\
         Branch: {branch}\n\
         HEAD: {head}\n\
@@ -149,6 +149,7 @@ pub fn build_repair_brief(request: &PatchOpenClawRequest) -> String {
         ## Verification\n\
         $ <command>\n\
         <output excerpt>\n",
+        repo_name = request.repo.repo_name,
         repo = request.repo.root.display(),
         branch = request.git_state.branch,
         head = request.git_state.head,
@@ -183,19 +184,20 @@ fn format_file_list(files: &[String]) -> String {
     }
 }
 
-pub fn summarize_patch_plan(request: &PatchOpenClawRequest) -> String {
+pub fn summarize_patch_plan(request: &PatchRequest) -> String {
     format!(
-        "Coven will patch OpenClaw at {} using harness `{}` with verification `{}`.\n\
-        Issue: {}\n\
+        "Coven will patch {repo_name} at {root} using harness `{harness}` with verification `{verification}`.\n\
+        Issue: {issue}\n\
         Nothing will be committed or pushed.",
-        request.repo.root.display(),
-        request.harness_id,
-        request.verification_profile,
-        request.issue()
+        repo_name = request.repo.repo_name,
+        root = request.repo.root.display(),
+        harness = request.harness_id,
+        verification = request.verification_profile,
+        issue = request.issue()
     )
 }
 
-pub fn summarize_patch_report(report: &PatchOpenClawReport) -> String {
+pub fn summarize_patch_report(report: &PatchReport) -> String {
     format!(
         "Coven patch status: {status}\n\
         Session: [redacted]\n\
@@ -222,9 +224,10 @@ mod tests {
 
     use super::*;
 
-    fn request(issue: &str) -> PatchOpenClawRequest {
-        PatchOpenClawRequest {
-            repo: OpenClawRepo {
+    fn request(issue: &str) -> PatchRequest {
+        PatchRequest {
+            repo: RepoHandle {
+                repo_name: "openclaw".to_string(),
                 root: PathBuf::from("/repo/openclaw"),
                 package_name: Some("openclaw".to_string()),
             },
@@ -323,12 +326,24 @@ mod tests {
     }
 
     #[test]
+    fn repair_brief_uses_registered_repo_name_for_non_openclaw_repos() {
+        let mut request = request("update toolchain");
+        request.repo.repo_name = "coven".to_string();
+        request.repo.root = PathBuf::from("/repo/coven");
+
+        let brief = build_repair_brief(&request);
+
+        assert!(brief.contains("You are repairing a local coven source checkout through Coven."));
+        assert!(brief.contains("Repository: /repo/coven"));
+    }
+
+    #[test]
     fn repair_brief_snapshot_locks_prompt_contract() {
         let brief = build_repair_brief(&request(" fix invalidated Codex auth profile order "));
 
         assert_eq!(
             brief,
-            "You are repairing a local OpenClaw source checkout through Coven.\n\n\
+            "You are repairing a local openclaw source checkout through Coven.\n\n\
 Repository: /repo/openclaw\n\
 Branch: fix/auth\n\
 HEAD: abc1234\n\
@@ -374,6 +389,7 @@ $ <command>\n\
         let summary = summarize_patch_plan(&request(" fix auth "));
 
         assert!(summary.contains("/repo/openclaw"));
+        assert!(summary.contains("openclaw"));
         assert!(summary.contains("codex"));
         assert!(summary.contains("auto"));
         assert!(summary.contains("fix auth"));
@@ -415,7 +431,7 @@ $ <command>\n\
 
     #[test]
     fn patch_report_reminds_user_nothing_was_committed_or_pushed() {
-        let report = PatchOpenClawReport {
+        let report = PatchReport {
             status: "patched".to_string(),
             session_id: "session-1".to_string(),
             changed_files: vec!["src/file.rs".to_string()],
@@ -432,7 +448,7 @@ $ <command>\n\
 
     #[test]
     fn patch_report_empty_state_is_inline_not_bulleted_none() {
-        let report = PatchOpenClawReport {
+        let report = PatchReport {
             status: "blocked".to_string(),
             session_id: "session-1".to_string(),
             changed_files: vec![],

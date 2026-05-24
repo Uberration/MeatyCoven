@@ -19,6 +19,7 @@ mod patch;
 mod pc;
 mod project;
 mod pty_runner;
+mod repos_config;
 mod store;
 mod theme;
 mod tui;
@@ -30,7 +31,6 @@ const DEFAULT_SESSION_STATUS: &str = "created";
 const RUNNING_SESSION_STATUS: &str = "running";
 const FAILED_SESSION_STATUS: &str = "failed";
 const DEFAULT_TITLE_CHARS: usize = 48;
-const OPENCLAW_REPOSITORY_ID: &str = "openclaw";
 
 #[derive(Parser, Debug)]
 #[command(name = "coven")]
@@ -101,29 +101,19 @@ enum Command {
         #[arg(long, help = "Confirm permanent deletion")]
         yes: bool,
     },
-    #[command(about = "Guided repair flows")]
+    #[command(about = "Guided repair flow for a registered repo")]
     Patch {
-        #[command(subcommand)]
-        command: PatchCommand,
-    },
-    #[command(about = "Diagnose and relieve macOS system pressure")]
-    Pc {
-        #[command(subcommand)]
-        command: Option<pc::PcCommand>,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-enum PatchCommand {
-    #[command(name = "openclaw")]
-    OpenClaw {
-        #[arg(num_args = 0..)]
+        #[arg(
+            help = "Registered repo name (default: from ~/.coven/repos.toml, else `openclaw`)"
+        )]
+        name: Option<String>,
+        #[arg(num_args = 0.., help = "Issue text describing what is broken")]
         issue: Vec<String>,
-        #[arg(long)]
+        #[arg(long, help = "Override the repo path for this run")]
         repo: Option<PathBuf>,
-        #[arg(long)]
+        #[arg(long, help = "Harness to use: codex or claude")]
         harness: Option<String>,
-        #[arg(long)]
+        #[arg(long, help = "Verification profile: auto, pnpm-check, targeted-test, diff-only")]
         verify: Option<String>,
         #[arg(long)]
         non_interactive: bool,
@@ -131,6 +121,11 @@ enum PatchCommand {
         dry_run: bool,
         #[arg(long)]
         keep_session: bool,
+    },
+    #[command(about = "Diagnose and relieve macOS system pressure")]
+    Pc {
+        #[command(subcommand)]
+        command: Option<pc::PcCommand>,
     },
 }
 
@@ -191,7 +186,25 @@ fn run_cli(cli: Cli) -> Result<()> {
         Some(Command::Summon { session_id }) => summon_session_command(&session_id),
         Some(Command::Archive { session_id }) => archive_session_command(&session_id),
         Some(Command::Sacrifice { session_id, yes }) => sacrifice_session_command(&session_id, yes),
-        Some(Command::Patch { command }) => run_patch_command(command),
+        Some(Command::Patch {
+            name,
+            issue,
+            repo,
+            harness,
+            verify,
+            non_interactive,
+            dry_run,
+            keep_session,
+        }) => run_patch(
+            name,
+            issue,
+            repo,
+            harness,
+            verify,
+            non_interactive,
+            dry_run,
+            keep_session,
+        ),
         Some(Command::Pc { command }) => pc::run_pc_command(command),
     }
 }
@@ -221,14 +234,25 @@ fn interactive_shell_route(
 }
 
 fn run_doctor() -> Result<()> {
+    let home = coven_home_dir()?;
     println!("Coven doctor");
-    println!("Store: {}", coven_home_dir()?.display());
+    println!("Store: {}", home.display());
     match std::env::current_dir()
         .ok()
         .and_then(|cwd| project::canonical_project_root(&cwd).ok())
     {
         Some(root) => println!("Project: {}", root.display()),
         None => println!("Project: not inside a git/project root yet"),
+    }
+
+    let repos_config = repos_config::load(&home)?;
+    if !repos_config.is_empty() {
+        println!("\nRepos ({}):", repos_config::config_path(&home).display());
+        for (name, path) in repos_config.entries() {
+            let ok = path.is_dir() && path.join(".git").exists();
+            let marker = if ok { "OK" } else { "!!" };
+            println!("  [{marker}] {name:<16} {}", path.display());
+        }
     }
 
     println!("\nHarnesses:");
@@ -259,41 +283,30 @@ fn run_doctor() -> Result<()> {
     Ok(())
 }
 
-fn run_patch_command(command: PatchCommand) -> Result<()> {
-    match command {
-        PatchCommand::OpenClaw {
-            issue,
-            repo,
-            harness,
-            verify,
-            non_interactive,
-            dry_run,
-            keep_session,
-        } => run_patch_openclaw(
-            issue,
-            repo,
-            harness,
-            verify,
-            non_interactive,
-            dry_run,
-            keep_session,
-        ),
-    }
-}
-
-fn run_patch_openclaw(
+#[allow(clippy::too_many_arguments)]
+fn run_patch(
+    name: Option<String>,
     issue: Vec<String>,
     repo: Option<PathBuf>,
     harness: Option<String>,
     verify: Option<String>,
     non_interactive: bool,
     dry_run: bool,
-    _keep_session: bool,
+    keep_session: bool,
 ) -> Result<()> {
+    let coven_home = coven_home_dir()?;
+    let repos_config = repos_config::load(&coven_home)?;
+    let resolved_name = name
+        .or_else(|| repos_config.default_name().map(str::to_string))
+        .unwrap_or_else(|| openclaw_repo::OPENCLAW_REPO_NAME.to_string());
+
     let start_dir = std::env::current_dir().context("failed to read current directory")?;
-    let stored_repo = stored_repository_path(OPENCLAW_REPOSITORY_ID)?;
-    let detected_repo = openclaw_repo::detect_openclaw_repo_with_stored(
+    let mapped_repo = repos_config.resolve(&resolved_name);
+    let stored_repo = stored_repository_path(&resolved_name)?;
+    let detected_repo = openclaw_repo::detect_repo(
+        &resolved_name,
         repo.as_deref(),
+        mapped_repo.as_deref(),
         &start_dir,
         stored_repo.as_deref(),
     )?;
@@ -301,7 +314,10 @@ fn run_patch_openclaw(
     let issue = match joined_optional_issue(issue)? {
         Some(issue) => issue,
         None if non_interactive => anyhow::bail!("issue text is required with --non-interactive"),
-        None => prompt_for_required_line("What is broken in OpenClaw? ")?,
+        None => prompt_for_required_line(&format!(
+            "What is broken in {}? ",
+            detected_repo.repo_name
+        ))?,
     };
     let harness_id = match harness {
         Some(harness) => patch::HarnessId::parse(&harness)?,
@@ -310,7 +326,7 @@ fn run_patch_openclaw(
     };
     let verification_profile = patch::VerificationProfile::parse(verify.as_deref())?;
 
-    let request = patch::PatchOpenClawRequest {
+    let request = patch::PatchRequest {
         repo: detected_repo,
         git_state,
         issue,
@@ -318,7 +334,7 @@ fn run_patch_openclaw(
         verification_profile,
         non_interactive,
         dry_run,
-        keep_session: _keep_session,
+        keep_session,
     };
 
     println!("{}", patch::summarize_patch_plan(&request));
@@ -339,7 +355,7 @@ fn run_patch_openclaw(
     }
 
     let session_id = launch_patch_session(&request)?;
-    remember_openclaw_repo_location(&request.repo)?;
+    remember_repo_location(&request.repo)?;
     let verification_results =
         verification::run_verification(&request.repo.root, &request.verification_profile)?;
     let verification_lines = verification_results
@@ -365,7 +381,7 @@ fn run_patch_openclaw(
 
     println!(
         "{}",
-        patch::summarize_patch_report(&patch::PatchOpenClawReport {
+        patch::summarize_patch_report(&patch::PatchReport {
             status: status.to_string(),
             session_id,
             changed_files,
@@ -388,15 +404,15 @@ fn stored_repository_path(repository_id: &str) -> Result<Option<PathBuf>> {
     Ok(store::get_repository(&conn, repository_id)?.map(|repo| PathBuf::from(repo.path)))
 }
 
-fn remember_openclaw_repo_location(repo: &openclaw_repo::OpenClawRepo) -> Result<()> {
+fn remember_repo_location(repo: &openclaw_repo::RepoHandle) -> Result<()> {
     let store_path = coven_store_path()?;
     let conn = store::open_store(&store_path)?;
     let now = current_timestamp();
-    let existing = store::get_repository(&conn, OPENCLAW_REPOSITORY_ID)?;
+    let existing = store::get_repository(&conn, &repo.repo_name)?;
     store::upsert_repository(
         &conn,
         &store::RepositoryRecord {
-            id: OPENCLAW_REPOSITORY_ID.to_string(),
+            id: repo.repo_name.clone(),
             path: repo.root.to_string_lossy().into_owned(),
             package_name: repo.package_name.clone(),
             created_at: existing
@@ -473,7 +489,7 @@ fn default_harness_id() -> Option<&'static str> {
         .map(|h| h.id)
 }
 
-fn launch_patch_session(request: &patch::PatchOpenClawRequest) -> Result<String> {
+fn launch_patch_session(request: &patch::PatchRequest) -> Result<String> {
     let selected_harness = selected_available_harness(request.harness_id.as_str())?;
     let store_path = coven_store_path()?;
     let conn = store::open_store(&store_path)?;
@@ -483,7 +499,7 @@ fn launch_patch_session(request: &patch::PatchOpenClawRequest) -> Result<String>
         id: Uuid::new_v4().to_string(),
         project_root: request.repo.root.to_string_lossy().into_owned(),
         harness: selected_harness.id.to_string(),
-        title: session_title(Some("Patch OpenClaw"), &brief),
+        title: session_title(Some(&format!("Patch {}", request.repo.repo_name)), &brief),
         status: DEFAULT_SESSION_STATUS.to_string(),
         exit_code: None,
         archived_at: None,
@@ -497,7 +513,7 @@ fn launch_patch_session(request: &patch::PatchOpenClawRequest) -> Result<String>
         &record.id,
         "patch_metadata",
         &serde_json::json!({
-            "patchTarget": "openclaw",
+            "patchTarget": request.repo.repo_name,
             "repoRoot": request.repo.root,
             "issue": request.issue,
             "harnessId": request.harness_id.as_str(),
@@ -1667,22 +1683,21 @@ mod tests {
     }
 
     #[test]
-    fn cli_accepts_patch_openclaw_guided_command() {
+    fn cli_accepts_patch_with_only_name() {
         let cli = Cli::parse_from(["coven", "patch", "openclaw"]);
 
         match cli.command {
             Some(Command::Patch {
-                command:
-                    PatchCommand::OpenClaw {
-                        issue,
-                        repo,
-                        harness,
-                        verify,
-                        non_interactive,
-                        dry_run,
-                        keep_session,
-                    },
+                name,
+                issue,
+                repo,
+                harness,
+                verify,
+                non_interactive,
+                dry_run,
+                keep_session,
             }) => {
+                assert_eq!(name.as_deref(), Some("openclaw"));
                 assert!(issue.is_empty());
                 assert!(repo.is_none());
                 assert!(harness.is_none());
@@ -1691,12 +1706,12 @@ mod tests {
                 assert!(!dry_run);
                 assert!(!keep_session);
             }
-            other => panic!("expected patch openclaw command, got {other:?}"),
+            other => panic!("expected patch command, got {other:?}"),
         }
     }
 
     #[test]
-    fn cli_accepts_patch_openclaw_fast_command() {
+    fn cli_accepts_patch_with_name_and_full_flag_set() {
         let cli = Cli::parse_from([
             "coven",
             "patch",
@@ -1715,17 +1730,16 @@ mod tests {
 
         match cli.command {
             Some(Command::Patch {
-                command:
-                    PatchCommand::OpenClaw {
-                        issue,
-                        repo,
-                        harness,
-                        verify,
-                        non_interactive,
-                        dry_run,
-                        keep_session,
-                    },
+                name,
+                issue,
+                repo,
+                harness,
+                verify,
+                non_interactive,
+                dry_run,
+                keep_session,
             }) => {
+                assert_eq!(name.as_deref(), Some("openclaw"));
                 assert_eq!(issue, vec!["fix auth order".to_string()]);
                 assert_eq!(repo.as_deref(), Some(Path::new("/repo/openclaw")));
                 assert_eq!(harness.as_deref(), Some("codex"));
@@ -1734,7 +1748,20 @@ mod tests {
                 assert!(dry_run);
                 assert!(keep_session);
             }
-            other => panic!("expected patch openclaw command, got {other:?}"),
+            other => panic!("expected patch command, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cli_accepts_patch_with_no_name() {
+        let cli = Cli::parse_from(["coven", "patch"]);
+
+        match cli.command {
+            Some(Command::Patch { name, issue, .. }) => {
+                assert!(name.is_none());
+                assert!(issue.is_empty());
+            }
+            other => panic!("expected patch command, got {other:?}"),
         }
     }
 

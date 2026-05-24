@@ -3,8 +3,11 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde_json::Value;
 
+pub const OPENCLAW_REPO_NAME: &str = "openclaw";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct OpenClawRepo {
+pub struct RepoHandle {
+    pub repo_name: String,
     pub root: PathBuf,
     pub package_name: Option<String>,
 }
@@ -23,35 +26,53 @@ impl GitState {
     }
 }
 
-pub fn detect_openclaw_repo_with_stored(
+pub fn detect_repo(
+    name: &str,
     explicit_repo: Option<&Path>,
+    mapped_repo: Option<&Path>,
     start_dir: &Path,
     stored_repo: Option<&Path>,
-) -> Result<OpenClawRepo> {
+) -> Result<RepoHandle> {
     if let Some(repo) = explicit_repo {
-        return validate_openclaw_repo(repo);
+        return validate_repo(name, repo);
     }
 
-    if let Some(repo) = detect_openclaw_repo_from_ancestor(start_dir)? {
-        return Ok(repo);
-    }
-
-    if let Some(repo) = stored_repo {
-        return validate_openclaw_repo(repo).with_context(|| {
+    if let Some(repo) = mapped_repo {
+        return validate_repo(name, repo).with_context(|| {
             format!(
-                "stored OpenClaw repo path {} is no longer valid; pass --repo <path>",
+                "repos.toml entry for \"{name}\" points to {} which is not a valid checkout",
                 repo.display()
             )
         });
     }
 
+    if name == OPENCLAW_REPO_NAME {
+        if let Some(repo) = detect_openclaw_repo_from_ancestor(start_dir)? {
+            return Ok(repo);
+        }
+    }
+
+    if let Some(repo) = stored_repo {
+        return validate_repo(name, repo).with_context(|| {
+            format!(
+                "stored \"{name}\" repo path {} is no longer valid; pass --repo <path>",
+                repo.display()
+            )
+        });
+    }
+
+    if name == OPENCLAW_REPO_NAME {
+        anyhow::bail!(
+            "could not find an OpenClaw source checkout from {}; pass --repo <path> or add it to ~/.coven/repos.toml",
+            start_dir.display()
+        );
+    }
     anyhow::bail!(
-        "could not find an OpenClaw source checkout from {}; pass --repo <path>",
-        start_dir.display()
+        "no path registered for repo \"{name}\"; add it to ~/.coven/repos.toml or pass --repo <path>"
     );
 }
 
-fn detect_openclaw_repo_from_ancestor(start_dir: &Path) -> Result<Option<OpenClawRepo>> {
+fn detect_openclaw_repo_from_ancestor(start_dir: &Path) -> Result<Option<RepoHandle>> {
     let mut candidate = start_dir
         .canonicalize()
         .with_context(|| format!("failed to resolve start directory {}", start_dir.display()))?;
@@ -66,7 +87,14 @@ fn detect_openclaw_repo_from_ancestor(start_dir: &Path) -> Result<Option<OpenCla
     }
 }
 
-fn validate_openclaw_repo(path: &Path) -> Result<OpenClawRepo> {
+fn validate_repo(name: &str, path: &Path) -> Result<RepoHandle> {
+    if name == OPENCLAW_REPO_NAME {
+        return validate_openclaw_repo(path);
+    }
+    validate_git_checkout(name, path)
+}
+
+fn validate_openclaw_repo(path: &Path) -> Result<RepoHandle> {
     let root = path
         .canonicalize()
         .with_context(|| format!("failed to resolve repo path {}", path.display()))?;
@@ -76,8 +104,35 @@ fn validate_openclaw_repo(path: &Path) -> Result<OpenClawRepo> {
             root.display()
         );
     }
-    Ok(OpenClawRepo {
-        package_name: package_name(&root)?,
+    let package_name = package_name(&root)?;
+    Ok(RepoHandle {
+        repo_name: OPENCLAW_REPO_NAME.to_string(),
+        package_name,
+        root,
+    })
+}
+
+fn validate_git_checkout(name: &str, path: &Path) -> Result<RepoHandle> {
+    let root = path
+        .canonicalize()
+        .with_context(|| format!("failed to resolve repo path {}", path.display()))?;
+    if !root.is_dir() {
+        anyhow::bail!("{} is not a directory", root.display());
+    }
+    if !root.join(".git").exists() {
+        anyhow::bail!(
+            "{} does not contain a .git directory or file",
+            root.display()
+        );
+    }
+    let package_name = if root.join("package.json").is_file() {
+        package_name(&root).ok().flatten()
+    } else {
+        None
+    };
+    Ok(RepoHandle {
+        repo_name: name.to_string(),
+        package_name,
         root,
     })
 }
@@ -180,6 +235,11 @@ mod tests {
         Ok(())
     }
 
+    fn write_generic_git_fixture(root: &Path) -> Result<()> {
+        fs::create_dir_all(root.join(".git"))?;
+        Ok(())
+    }
+
     fn run_git_for_test(repo_root: &Path, args: &[&str]) -> Result<()> {
         let output = std::process::Command::new("git")
             .args(args)
@@ -210,10 +270,11 @@ mod tests {
         let repo = temp.path().join("openclaw");
         write_openclaw_fixture(&repo)?;
 
-        let detected = detect_openclaw_repo_with_stored(Some(&repo), temp.path(), None)?;
+        let detected = detect_repo(OPENCLAW_REPO_NAME, Some(&repo), None, temp.path(), None)?;
 
         assert_eq!(detected.root, repo.canonicalize()?);
         assert_eq!(detected.package_name.as_deref(), Some("openclaw"));
+        assert_eq!(detected.repo_name, OPENCLAW_REPO_NAME);
         Ok(())
     }
 
@@ -224,7 +285,8 @@ mod tests {
         fs::create_dir_all(repo.join(".git"))?;
         fs::write(repo.join("package.json"), r#"{"name":"other"}"#)?;
 
-        let error = detect_openclaw_repo_with_stored(Some(&repo), temp.path(), None).unwrap_err();
+        let error =
+            detect_repo(OPENCLAW_REPO_NAME, Some(&repo), None, temp.path(), None).unwrap_err();
 
         assert!(
             error
@@ -241,10 +303,9 @@ mod tests {
         let repo = temp.path().join("openclaw");
         let child = repo.join("src/agents");
         write_openclaw_fixture(&repo)?;
-        // Also create the child dir so ancestry search works
         fs::create_dir_all(&child)?;
 
-        let detected = detect_openclaw_repo_with_stored(None, &child, None)?;
+        let detected = detect_repo(OPENCLAW_REPO_NAME, None, None, &child, None)?;
 
         assert_eq!(detected.root, repo.canonicalize()?);
         Ok(())
@@ -258,29 +319,60 @@ mod tests {
         write_openclaw_fixture(&repo)?;
         fs::create_dir(&unrelated)?;
 
-        let detected = detect_openclaw_repo_with_stored(None, &unrelated, Some(&repo))?;
+        let detected = detect_repo(OPENCLAW_REPO_NAME, None, None, &unrelated, Some(&repo))?;
 
         assert_eq!(detected.root, repo.canonicalize()?);
         Ok(())
     }
 
     #[test]
-    fn explicit_openclaw_repo_beats_stored_repo() -> Result<()> {
+    fn explicit_openclaw_repo_beats_other_sources() -> Result<()> {
         let temp = tempfile::tempdir()?;
         let explicit = temp.path().join("explicit");
         let stored = temp.path().join("stored");
+        let mapped = temp.path().join("mapped");
         write_openclaw_fixture(&explicit)?;
         write_openclaw_fixture(&stored)?;
+        write_openclaw_fixture(&mapped)?;
 
-        let detected =
-            detect_openclaw_repo_with_stored(Some(&explicit), temp.path(), Some(&stored))?;
+        let detected = detect_repo(
+            OPENCLAW_REPO_NAME,
+            Some(&explicit),
+            Some(&mapped),
+            temp.path(),
+            Some(&stored),
+        )?;
 
         assert_eq!(detected.root, explicit.canonicalize()?);
         Ok(())
     }
 
     #[test]
-    fn ancestry_openclaw_repo_beats_stored_repo() -> Result<()> {
+    fn mapped_openclaw_repo_beats_ancestor_and_stored() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let ancestor = temp.path().join("ancestor");
+        let child = ancestor.join("src/gateway");
+        let stored = temp.path().join("stored");
+        let mapped = temp.path().join("mapped");
+        write_openclaw_fixture(&ancestor)?;
+        write_openclaw_fixture(&stored)?;
+        write_openclaw_fixture(&mapped)?;
+        fs::create_dir_all(&child)?;
+
+        let detected = detect_repo(
+            OPENCLAW_REPO_NAME,
+            None,
+            Some(&mapped),
+            &child,
+            Some(&stored),
+        )?;
+
+        assert_eq!(detected.root, mapped.canonicalize()?);
+        Ok(())
+    }
+
+    #[test]
+    fn ancestor_openclaw_repo_beats_stored_when_no_mapping() -> Result<()> {
         let temp = tempfile::tempdir()?;
         let ancestor = temp.path().join("ancestor");
         let child = ancestor.join("src/gateway");
@@ -289,9 +381,66 @@ mod tests {
         write_openclaw_fixture(&stored)?;
         fs::create_dir_all(&child)?;
 
-        let detected = detect_openclaw_repo_with_stored(None, &child, Some(&stored))?;
+        let detected = detect_repo(OPENCLAW_REPO_NAME, None, None, &child, Some(&stored))?;
 
         assert_eq!(detected.root, ancestor.canonicalize()?);
+        Ok(())
+    }
+
+    #[test]
+    fn generic_repo_resolves_from_mapping_with_only_git_marker() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let mapped = temp.path().join("other-repo");
+        write_generic_git_fixture(&mapped)?;
+
+        let detected = detect_repo("other-repo", None, Some(&mapped), temp.path(), None)?;
+
+        assert_eq!(detected.repo_name, "other-repo");
+        assert_eq!(detected.root, mapped.canonicalize()?);
+        assert!(detected.package_name.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn generic_repo_rejects_path_missing_git_marker() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let mapped = temp.path().join("plain-dir");
+        fs::create_dir_all(&mapped)?;
+
+        let error = detect_repo("plain", None, Some(&mapped), temp.path(), None).unwrap_err();
+        let rendered = format!("{error:#}");
+
+        assert!(
+            rendered.contains("does not contain a .git"),
+            "unexpected error: {rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generic_repo_does_not_ancestor_walk() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let ancestor = temp.path().join("openclaw");
+        let child = ancestor.join("src/gateway");
+        write_openclaw_fixture(&ancestor)?;
+        fs::create_dir_all(&child)?;
+
+        let error = detect_repo("other", None, None, &child, None).unwrap_err();
+
+        assert!(
+            error.to_string().contains("no path registered for repo"),
+            "unexpected error: {error:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_generic_repo_errors_with_helpful_message() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let error = detect_repo("nope", None, None, temp.path(), None).unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("\"nope\""), "unexpected error: {message}");
+        assert!(message.contains("repos.toml"), "unexpected error: {message}");
         Ok(())
     }
 
