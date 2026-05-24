@@ -21,11 +21,18 @@ The short promise:
 
 ## Install paths
 
-Use the npm wrapper when you want the fastest public install:
+Use the npm wrapper for a one-off setup check:
 
 ```sh
 npx @opencoven/cli doctor
 pnpm dlx @opencoven/cli doctor
+```
+
+Install the wrapper when you want to keep using the `coven` command:
+
+```sh
+npm install -g @opencoven/cli
+coven doctor
 ```
 
 Build from source when you are contributing to Coven:
@@ -86,6 +93,7 @@ coven doctor
 
 - store readiness;
 - project detection;
+- daemon/socket status;
 - built-in harness availability; and
 - next steps for missing setup.
 
@@ -168,41 +176,11 @@ Use `restart` when the socket or daemon state looks stale:
 coven daemon restart
 ```
 
-## Diagnostics and relief
-
-`coven pc` is a macOS-first system diagnostics and relief tool surfaced through the Coven CLI. All read operations are side-effect free.
-
-Inspect:
-
-```sh
-coven pc                  # full report: CPU, memory, disk, top processes
-coven pc status           # one-line health summary with 🟢/🟡/🔴 indicators
-coven pc status --json    # machine-readable health summary
-coven pc top --n 10       # top-N processes by CPU usage
-coven pc disk             # disk usage breakdown
-```
-
-Relief operations mutate system state and require an explicit `--confirm` gate:
-
-```sh
-coven pc kill <pid> --confirm     # SIGTERM with PID identity re-check
-coven pc cache clear --confirm    # clear ~/Library/Caches + /Library/Caches
-```
-
-Safety constraints in v1:
-
-- All write operations require `--confirm`. There is no bypass path.
-- Termination is SIGTERM only. No SIGKILL.
-- Process identity is re-checked immediately before SIGTERM to prevent PID reuse.
-- Cache clear uses a hardcoded path list. No glob expansion.
-- Process arguments are redacted by default; pass `--verbose` to inspect them.
-- No `sudo`, no LaunchAgent mutation, no system service control.
-
 ## End-to-end flow
 
 ```mermaid
 flowchart LR
-  Install["Install\nnpx @opencoven/cli doctor"] --> Doctor["coven doctor"]
+  Install["Install\nnpm install -g @opencoven/cli"] --> Doctor["coven doctor"]
   Doctor --> Daemon["coven daemon start"]
   Daemon --> Run["coven run codex prompt"]
   Run --> Sessions["coven sessions\n(rejoin / view log / archive)"]
@@ -212,7 +190,7 @@ flowchart LR
   Harness --> Doctor
 ```
 
-The "install → doctor → daemon → run → sessions" loop is the entire happy path for a first session. Everything else in this guide is fallback or troubleshooting.
+The "install → doctor → daemon → run → sessions" loop is the entire happy path for a first session. Everything else belongs in deeper guides or troubleshooting.
 
 
 ## Contributor verification loop

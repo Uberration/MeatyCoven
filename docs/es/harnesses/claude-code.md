@@ -90,7 +90,6 @@ sequenceDiagram
 
 Las llamadas a herramientas de Claude Code se ejecutan dentro del proceso de Claude — Coven no las arbitra. El PTY captura su salida como stdout/stderr ordinario.
 
-> **Image asset prompt (to be generated and dropped into `docs/images/harnesses-claude-launch.png`):** Render a 1600×900 split-screen mockup. Left half: a terminal showing `coven run claude "refactor for clarity"` and a live Claude attach stream. Right half: the Coven TUI session browser highlighting `claude · running · "Web refactor" · session-2` in the OpenCoven accent. Background `#1A1825`, primary `#9A8ECD`.
 
 ## Relacionado
 

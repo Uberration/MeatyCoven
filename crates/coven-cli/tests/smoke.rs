@@ -117,6 +117,31 @@ fn daemon_status_recovers_corrupt_metadata_from_live_daemon_health() -> anyhow::
 }
 
 #[test]
+fn doctor_reports_live_daemon_socket_status() -> anyhow::Result<()> {
+    let temp_dir = tempfile::tempdir()?;
+    let coven_home = temp_dir.path().join("coven-home");
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let coven = coven_bin();
+    let _daemon_guard = DaemonGuard {
+        coven: coven.clone(),
+        coven_home: coven_home.clone(),
+        path: path.clone(),
+    };
+
+    let start = run_coven(&coven, &coven_home, &path, &["daemon", "start"])?;
+    assert_success("daemon start", &start);
+    wait_for_daemon_health(&coven_home)?;
+
+    let output = run_coven(&coven, &coven_home, &path, &["doctor"])?;
+
+    assert_success("doctor with live daemon", &output);
+    assert_stdout_contains("doctor with live daemon", &output, "Daemon:");
+    assert_stdout_contains("doctor with live daemon", &output, "status=running");
+    assert_stdout_contains("doctor with live daemon", &output, "socket=");
+    Ok(())
+}
+
+#[test]
 fn smoke_daemon_session_replay_and_safe_session_rituals() -> anyhow::Result<()> {
     let temp_dir = tempfile::tempdir()?;
     let coven_home = temp_dir.path().join("coven-home");

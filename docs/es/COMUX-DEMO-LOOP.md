@@ -112,5 +112,3 @@ Los clientes deben mantener su UI principal usable cuando Coven falta o está de
 ## Roadmap
 
 El roadmap más amplio de OpenCoven sigue siendo el punto de seguimiento público para la demo extremo a extremo: [ROADMAP.md](/ROADMAP).
-
-> **Image asset prompt (to be generated and dropped into `docs/images/comux-demo-loop.png`):** Render a 1920×1080 split-pane mockup that mimics a comux cockpit on the OpenCoven dark palette (`#1A1825` background, `#9A8ECD` chrome). Three tmux-like panes: (1) file explorer with a fake monorepo tree, (2) live attach view streaming a fake Codex session ("Fix the failing tests"), (3) diff/review pane with a small green/red unified diff. Bottom status bar reads `coven daemon · running · 1.2 MB events · 2 active sessions`. Use `Fragment Mono`.

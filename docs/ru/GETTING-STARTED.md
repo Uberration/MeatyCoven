@@ -210,7 +210,6 @@ flowchart LR
 
 Цикл "install → doctor → daemon → run → sessions" — это весь счастливый путь для первой сессии. Всё остальное в этом руководстве — fallback или troubleshooting.
 
-> **Image asset prompt (to be generated and dropped into `docs/images/getting-started-doctor.png`):** Render a 1600×900 terminal screenshot on the OpenCoven dark palette showing the output of `coven doctor` after a successful setup. Lines: `store: ok`, `project: ok (/Users/example/projects/demo)`, `daemon: running (pid 12345)`, `codex: ok (/usr/local/bin/codex 0.12.3)`, `claude: ok (/usr/local/bin/claude 0.7.1)`. Use the OpenCoven accent (`#D4B5FF`) for the `ok` tokens. Font: `Fragment Mono`.
 
 ## Цикл проверки контрибьютора
 

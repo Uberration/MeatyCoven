@@ -82,7 +82,6 @@ Como Coven se niega a poseer credenciales, **el usuario** es responsable de:
 - Rotar tokens del proveedor a través de la CLI del harness cuando sea necesario.
 - Tratar cualquier salida del harness que imprima una credencial (porque tú lo pediste) como registrada en el ledger — límpiala con [`coven sacrifice`](/SESSION-LIFECYCLE#sacrifice) si es necesario.
 
-> **Image asset prompt (to be generated and dropped into `docs/images/provider-auth-boundary.svg`):** Draw a vector diagram 1600×900 on the OpenCoven dark background (`#1A1825`). Three columns labelled "User → Harness CLI", "Coven daemon (supervises)", and "Provider (OpenAI / Anthropic)". A solid lavender arrow (`#9A8ECD`) goes User → Harness CLI → Provider. A dashed lavender arrow goes Harness CLI → Coven daemon labelled "stdout / events only". Cross out any conceptual line from Coven daemon → Provider with a thin red diagonal. Caption: "Coven never sees the credential." Use `DM Sans` for labels, `Fragment Mono` for the small "`coven run codex …`" call-out.
 
 ## Relacionado
 

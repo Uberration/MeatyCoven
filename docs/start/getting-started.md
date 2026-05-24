@@ -43,7 +43,7 @@ Coven does not store provider credentials. Each harness keeps using its own loca
     ```bash
     coven doctor
     ```
-    `doctor` checks the store, project boundary, and harness readiness. Follow its hints before continuing.
+    `doctor` checks the store, project boundary, daemon/socket status, and harness readiness. Follow its hints before continuing.
   </Step>
   <Step title="Start the daemon">
     ```bash
@@ -76,6 +76,9 @@ Coven does not store provider credentials. Each harness keeps using its own loca
   <Card title="Local API" href="/daemon/socket-api" icon="plug">
     Build a client that handshakes with `GET /api/v1/health`.
   </Card>
+  <Card title="Tinkerer's next 30 minutes" href="/start/tinkerers-next-30-minutes" icon="terminal">
+    Probe the daemon API, JSON output, event log, and fake-harness loop.
+  </Card>
 </Columns>
 
 ## Related
@@ -83,3 +86,4 @@ Coven does not store provider credentials. Each harness keeps using its own loca
 - [Install overview](/install)
 - [Doctor](/start/doctor)
 - [Coven TUI](/start/coven-tui)
+- [Tinkerer's next 30 minutes](/start/tinkerers-next-30-minutes)

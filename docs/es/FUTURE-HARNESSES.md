@@ -95,5 +95,3 @@ flowchart LR
 ```
 
 Un candidato pasa de **Fase 1: investigación** al soporte público v0 solo después de superar cada etapa en la [lista de madurez de adaptadores de harness](/HARNESS-ADAPTERS#suggested-adapter-maturity-stages). La cuadrícula anterior es direccional, no una promesa.
-
-> **Image asset prompt (to be generated and dropped into `docs/images/future-harnesses-landscape.svg`):** Draw a horizontal vector "lane" diagram 1600×600 on the OpenCoven dark background. Three lanes labelled **Supported v0**, **Research**, and **Later**. Lane chips: v0 = Codex, Claude Code (filled with `#9A8ECD`); Research = Hermes, Aider, Gemini CLI, Cline (filled with `#3D3547`, lavender border); Later = OpenCode, Custom (outline only). Add a thin lavender arrow above the lanes labelled "maturity gate". Use `DM Sans` for labels.

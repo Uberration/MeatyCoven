@@ -119,7 +119,6 @@ coven doctor
 | Doctor muestra una versión obsoleta | Binario más antiguo más temprano en `PATH` | `which -a codex` (o `claude`) y elimina el duplicado. |
 | Doctor informa `unsupported harness` | Error tipográfico en el id de harness | Usa uno de los ids de la tabla anterior. |
 
-> **Image asset prompt (to be generated and dropped into `docs/images/harnesses-doctor-success.png`):** Render a terminal screenshot 1280×720 showing `coven doctor` output on a dark OpenCoven-themed background (primary `#9A8ECD`). Lines: `store: ok`, `project: ok (/Users/example/projects/demo)`, `daemon: running (pid 12345)`, `codex: ok (/usr/local/bin/codex 0.12.3)`, `claude: ok (/usr/local/bin/claude 0.7.1)`. Use `Fragment Mono` for code, the OpenCoven mark in the top-left chrome, and a subtle lavender-grey accent on the `ok` tokens.
 
 ## Relacionado
 

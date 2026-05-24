@@ -82,7 +82,6 @@ Append-only журнал событий записывает stdout/stderr harne
 - Ротацию токенов провайдера через CLI harness'а при необходимости.
 - Обращение с любым выводом harness'а, который печатает учётные данные (потому что ты попросил), как с записанным в журнал — очисти его с помощью [`coven sacrifice`](/SESSION-LIFECYCLE#sacrifice) при необходимости.
 
-> **Image asset prompt (to be generated and dropped into `docs/images/provider-auth-boundary.svg`):** Draw a vector diagram 1600×900 on the OpenCoven dark background (`#1A1825`). Three columns labelled "User → Harness CLI", "Coven daemon (supervises)", and "Provider (OpenAI / Anthropic)". A solid lavender arrow (`#9A8ECD`) goes User → Harness CLI → Provider. A dashed lavender arrow goes Harness CLI → Coven daemon labelled "stdout / events only". Cross out any conceptual line from Coven daemon → Provider with a thin red diagonal. Caption: "Coven never sees the credential." Use `DM Sans` for labels, `Fragment Mono` for the small "`coven run codex …`" call-out.
 
 ## Связанное
 

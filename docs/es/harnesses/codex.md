@@ -97,7 +97,6 @@ sequenceDiagram
 
 La línea punteada digna de notar: Coven nunca se conecta a la API de OpenAI por sí mismo. La ruta de credenciales es **CLI de Codex ↔ OpenAI**, con Coven solo observando la salida del PTY.
 
-> **Image asset prompt (to be generated and dropped into `docs/images/harnesses-codex-launch.png`):** Render a 1600×900 split-screen mockup. Left half: a terminal showing `coven run codex "audit this repo"` followed by the live attach stream (a few wrapped lines of fake Codex output). Right half: the Coven TUI session browser showing one new entry highlighted in the OpenCoven accent (`#D4B5FF`): `codex · running · "audit this repo" · session-1`. Background `#1A1825`, primary `#9A8ECD`.
 
 ## Relacionado
 

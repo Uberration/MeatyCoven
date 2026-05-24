@@ -95,5 +95,3 @@ flowchart LR
 ```
 
 Кандидат переходит из **Фазы 1: исследование** в публичную поддержку v0 только после прохождения каждого этапа в [контрольном списке зрелости адаптера harness'а](/HARNESS-ADAPTERS#suggested-adapter-maturity-stages). Сетка выше — направление, а не обещание.
-
-> **Image asset prompt (to be generated and dropped into `docs/images/future-harnesses-landscape.svg`):** Draw a horizontal vector "lane" diagram 1600×600 on the OpenCoven dark background. Three lanes labelled **Supported v0**, **Research**, and **Later**. Lane chips: v0 = Codex, Claude Code (filled with `#9A8ECD`); Research = Hermes, Aider, Gemini CLI, Cline (filled with `#3D3547`, lavender border); Later = OpenCode, Custom (outline only). Add a thin lavender arrow above the lanes labelled "maturity gate". Use `DM Sans` for labels.
