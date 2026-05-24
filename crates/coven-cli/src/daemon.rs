@@ -8,7 +8,10 @@ use std::time::{Duration, Instant};
 #[cfg(unix)]
 use std::io::{BufRead, BufReader, Read};
 #[cfg(unix)]
-use std::os::unix::net::{UnixListener, UnixStream};
+use std::os::unix::{
+    fs::PermissionsExt,
+    net::{UnixListener, UnixStream},
+};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -230,6 +233,28 @@ pub fn daemon_socket_path(coven_home: &Path) -> PathBuf {
     coven_home.join("coven.sock")
 }
 
+#[cfg(unix)]
+fn ensure_private_coven_home(coven_home: &Path) -> Result<()> {
+    std::fs::create_dir_all(coven_home)
+        .with_context(|| format!("failed to create Coven home {}", coven_home.display()))?;
+    std::fs::set_permissions(coven_home, std::fs::Permissions::from_mode(0o700)).with_context(
+        || {
+            format!(
+                "failed to set Coven home permissions {}",
+                coven_home.display()
+            )
+        },
+    )?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_private_coven_home(coven_home: &Path) -> Result<()> {
+    std::fs::create_dir_all(coven_home)
+        .with_context(|| format!("failed to create Coven home {}", coven_home.display()))?;
+    Ok(())
+}
+
 pub fn background_server_spec(current_exe: &Path, coven_home: &Path) -> DaemonSpawnSpec {
     DaemonSpawnSpec {
         program: current_exe.to_path_buf(),
@@ -244,8 +269,7 @@ pub fn start_background_server(
     started_at: String,
 ) -> Result<DaemonStatus> {
     let spec = background_server_spec(current_exe, coven_home);
-    std::fs::create_dir_all(coven_home)
-        .with_context(|| format!("failed to create Coven home {}", coven_home.display()))?;
+    ensure_private_coven_home(coven_home)?;
     let child = Command::new(&spec.program)
         .args(&spec.args)
         .env("COVEN_HOME", &spec.coven_home)
@@ -285,11 +309,19 @@ pub fn recover_orphaned_sessions(coven_home: &Path, updated_at: &str) -> Result<
 }
 
 pub fn write_status(coven_home: &Path, status: &DaemonStatus) -> Result<()> {
-    std::fs::create_dir_all(coven_home)
-        .with_context(|| format!("failed to create Coven home {}", coven_home.display()))?;
+    ensure_private_coven_home(coven_home)?;
     let json = serde_json::to_string_pretty(status).context("failed to serialize daemon status")?;
-    std::fs::write(daemon_status_path(coven_home), format!("{json}\n"))
-        .context("failed to write daemon status")?;
+    let status_path = daemon_status_path(coven_home);
+    std::fs::write(&status_path, format!("{json}\n")).context("failed to write daemon status")?;
+    #[cfg(unix)]
+    std::fs::set_permissions(&status_path, std::fs::Permissions::from_mode(0o600)).with_context(
+        || {
+            format!(
+                "failed to set daemon status permissions {}",
+                status_path.display()
+            )
+        },
+    )?;
     Ok(())
 }
 
@@ -620,15 +652,23 @@ fn daemon_status_from_health_socket(socket: &str) -> Result<Option<DaemonStatus>
 
 #[cfg(unix)]
 pub fn bind_api_socket(coven_home: &Path) -> Result<UnixListener> {
-    std::fs::create_dir_all(coven_home)
-        .with_context(|| format!("failed to create Coven home {}", coven_home.display()))?;
+    ensure_private_coven_home(coven_home)?;
     let socket_path = daemon_socket_path(coven_home);
     if socket_path.exists() {
         std::fs::remove_file(&socket_path)
             .with_context(|| format!("failed to remove stale socket {}", socket_path.display()))?;
     }
-    UnixListener::bind(&socket_path)
-        .with_context(|| format!("failed to bind Coven API socket {}", socket_path.display()))
+    let listener = UnixListener::bind(&socket_path)
+        .with_context(|| format!("failed to bind Coven API socket {}", socket_path.display()))?;
+    std::fs::set_permissions(&socket_path, std::fs::Permissions::from_mode(0o600)).with_context(
+        || {
+            format!(
+                "failed to set Coven API socket permissions {}",
+                socket_path.display()
+            )
+        },
+    )?;
+    Ok(listener)
 }
 
 #[cfg(unix)]
@@ -885,6 +925,54 @@ mod tests {
         assert!(clear_status(temp_dir.path())?);
         assert_eq!(read_status(temp_dir.path())?, None);
         assert!(!clear_status(temp_dir.path())?);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_status_and_socket_use_owner_only_permissions() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o755))?;
+        let status = DaemonStatus {
+            pid: 12345,
+            started_at: "2026-04-27T10:00:00Z".to_string(),
+            socket: daemon_socket_path(temp_dir.path())
+                .to_string_lossy()
+                .into_owned(),
+        };
+
+        write_status(temp_dir.path(), &status)?;
+        let status_mode = std::fs::metadata(daemon_status_path(temp_dir.path()))?
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(status_mode, 0o600);
+
+        let listener = bind_api_socket(temp_dir.path())?;
+        assert!(daemon_socket_path(temp_dir.path()).exists());
+        let socket_mode = std::fs::metadata(daemon_socket_path(temp_dir.path()))?
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(socket_mode, 0o600);
+        drop(listener);
+
+        let home_mode = std::fs::metadata(temp_dir.path())?.permissions().mode() & 0o777;
+        assert_eq!(home_mode, 0o700);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bind_api_socket_hardens_coven_home_permissions() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o755))?;
+
+        let listener = bind_api_socket(temp_dir.path())?;
+        drop(listener);
+
+        let home_mode = std::fs::metadata(temp_dir.path())?.permissions().mode() & 0o777;
+        assert_eq!(home_mode, 0o700);
         Ok(())
     }
 
