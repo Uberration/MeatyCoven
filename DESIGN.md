@@ -1,6 +1,6 @@
 # OpenCoven — Brand & Design System
 
-**Status:** Production-Ready | Last Updated: 2026-05-15 (Brand palette updated)
+**Status:** Production-Ready | Last Updated: 2026-05-24 (Field manual redesign + no-gradient rule)
 
 ---
 
@@ -77,49 +77,33 @@ Do not substitute gradient, mark-only, black-only, monoline, or external avatar 
 
 ```css
 /* Anchors */
---oc-black: #000000;
+--oc-black: #080808;
 --oc-white: #ffffff;
 
-/* Purple Spectrum (Signature) */
---oc-purple-1: #6E4BFF;      /* Deep / rich */
---oc-purple-2: #8A63FF;      /* Mid / primary UI accent */
---oc-purple-3: #A78BFF;      /* Light / subtle backgrounds */
---oc-purple-glow: #7C5CFF;   /* Glow / hover states */
-```
-
-### Accent Palette (Controlled Use)
-```css
-/* System / Actionable */
---oc-accent-blue: #0A84FF;
-
-/* Semantic */
---oc-danger: #FF3B30;
---oc-success: #30D158;
-```
-
-### Gradients (Signature)
-
-**Linear (primary):**
-```
-#6E4BFF → #A78BFF
-```
-
-**Radial Glow (halos, accents):**
-```
-#8A63FF → transparent
+/* Violet Spectrum (Signature) */
+--oc-purple-1: #6a5fa0;      /* Dim / secondary */
+--oc-purple-2: #9A8ECD;      /* Primary UI accent — canonical violet */
+--oc-purple-3: #b8afdc;      /* Light / subtle */
+--oc-purple-glow: #9A8ECD;   /* Hover states — same as primary, no glow shadow */
 ```
 
 ### Usage Guidelines
 - **90% black / white** — compose UI on neutral foundation
-- **10% purple accents** — hover states, highlights, borders, glows
-- **Never over-saturate** — avoid multiple gradients or over-layered purples
-- **Glow only on interaction** — breathing, hover, focus states
+- **10% violet accents** — hover states, active borders, labels, identity moments
+- **No gradients. Ever.** — flat solid colors only; this rule has no exceptions
+- **No glow shadows** — border-color changes on hover, not box-shadow glow
+- **No blur/glass** — no backdrop-filter; panels are solid surface colors
 - **Maintain contrast** — all text must meet WCAG AA minimums
 
-### Implementation Files
-```
-/brand/ui/
-  └── color-tokens.css    # CSS custom properties + gradients
+### Surfaces
+```css
+--oc-surface-0: #080808;    /* Page background */
+--oc-surface-1: #0f0f0f;    /* Cards, panels */
+--oc-surface-2: #141414;    /* Elevated panels */
+--oc-surface-3: #1a1a1a;    /* Hover surface */
+--oc-border-subtle: rgba(255,255,255,0.06);
+--oc-border-strong: rgba(255,255,255,0.10);
+--oc-border-violet: rgba(154,142,205,0.18);  /* Accent borders */
 ```
 
 ---
@@ -181,29 +165,64 @@ Do not substitute gradient, mark-only, black-only, monoline, or external avatar 
 
 ---
 
-## 6. Landing Page System
+## 6. Visual Style — Field Manual
+
+OpenCoven UI uses a **field manual aesthetic**: high information density, monospace labels, ruled borders, structured grids, zero decoration. Think ops dashboard meets field report.
+
+### Principles
+- **Flat and solid** — no gradients, no blur, no glow shadows
+- **Monospace for labels** — `JetBrains Mono` or `SF Mono` for all uppercase labels, badges, status text, nav items, and metadata
+- **Ruled borders** — thin `rgba(255,255,255,0.06–0.10)` lines as structural dividers
+- **Dense but readable** — generous line-height in body copy, tight in labels
+- **Hover = border change** — `border-color` shifts on hover; never `box-shadow` glow, never `transform: scale`
+- **Violet for identity** — `#9A8ECD` on labels, active states, accent borders only; not backgrounds
+
+### Typography in UI
+```
+Display / headlines:  Inter, 800 weight, -0.025em tracking
+Body copy:            Inter, 400 weight, 1.65 line-height
+Labels / badges:      JetBrains Mono, 700, 0.14–0.18em letter-spacing, uppercase
+Code / terminal:      JetBrains Mono, 400
+```
+
+### Button Style
+- Sharp corners (border-radius: 4–5px)
+- Monospace label, uppercase, 10–11px
+- Primary: solid `#9A8ECD` fill, `#080808` text
+- Secondary: transparent, subtle border
+- **No pill shapes** on primary actions
+- **No box-shadow on hover** — only border-color and background shift
+
+---
+
+## 7. Landing Page System
 
 ### Layout Structure
 
-#### Hero Section
-- **Background:** Pure black (#000000)
-- **Content:** Centered approved logo
-- **Glow effect:** Subtle radial purple (#8A63FF with opacity gradient)
-- **Breathing animation:** 2–3s loop, soft pulse
+### Hero Section
+- **Background:** `#080808` — pure flat black
+- **No ambient wash divs, no radial halos, no grid overlays**
+- **Headline:** Inter 800, flat `#9A8ECD` span (no gradient clip)
+- **Kicker:** JetBrains Mono, 10px, 0.18em tracking, prefixed with a 20px violet rule
+- **CTAs:** Sharp corners, monospace labels; primary is solid violet fill
+- **Workspace card:** solid `#0f0f0f` surface, no backdrop-filter, no inner glow
+- **Hero footer:** JetBrains Mono, 9px, ruled top border, muted
 
 **Headline:**
 ```
-"Orchestrate Intelligence."
+OpenCoven turns AI into a living workspace.
 ```
 
 **Sub-headline:**
 ```
-Multi-agent systems. Unified control. Real execution.
+Summon named agents with memory, tools, identity, roles, and continuity.
+OpenCoven gives them a local runtime, shared project context,
+and a place to coordinate without becoming opaque.
 ```
 
 **CTAs:**
-- **Primary:** "Get Started" (purple glow on hover)
-- **Secondary:** "View Docs" (subtle border, no fill)
+- **Primary:** "Join the Discord" (solid violet `#9A8ECD`)
+- **Secondary:** "View on GitHub", "Read the field notes" (transparent, subtle border)
 
 #### Sections
 
@@ -233,11 +252,11 @@ Multi-agent systems. Unified control. Real execution.
 - Testimonials (if any)
 
 ### UI Style
-- **Glass:** None (no heavy blur effects)
-- **Borders:** Subtle, `rgba(255,255,255,0.08)`
-- **Hover states:** Glow effect, NOT scale/grow
-- **Spacing:** Generous negative space
-- **Shadows:** Minimal, only for depth where necessary
+- **No glass, no blur** — solid surfaces only
+- **Borders:** `rgba(255,255,255,0.06–0.10)` structural, `rgba(154,142,205,0.18)` violet accent
+- **Hover states:** border-color shift only — no glow, no scale, no shadow
+- **Spacing:** generous negative space between sections
+- **Shadows:** none
 
 ---
 
@@ -389,24 +408,26 @@ animation: breathe 2.5s ease-in-out infinite;
 
 ### ✅ Do
 - Keep compositions centered and balanced
-- Use negative space aggressively (breathing room)
-- Let the logo carry the identity (it's strong enough alone)
-- Maintain consistent purple accent usage (10% rule)
-- Ensure all text is high contrast on backgrounds
-- Use motion to clarify interaction, not distract
-- Test all designs in both light and dark contexts
+- Use negative space aggressively
+- Let the logo carry the identity
+- Maintain consistent violet accent usage (10% rule)
+- Ensure all text is high contrast
+- Use monospace for all labels, badges, nav items, metadata
+- Sharp corners on interactive elements (4–5px radius)
+- Hover = border-color change only
 - Verify icon legibility at minimum 24px scale
 
 ### ❌ Don't
-- Overuse gradients (90% black/white minimum)
-- Add neon, cyberpunk clutter, or decorative flourishes
-- Introduce randomness or asymmetry without reason
+- **Use gradients anywhere** — no linear, no radial, no gradient text clips. Zero exceptions.
+- Use `backdrop-filter` or glass blur effects
+- Use `box-shadow` glow on hover or focus (use `outline` for focus rings only)
+- Use pill-shaped buttons on primary actions
+- Add ambient wash divs or decorative overlays
 - Mix serif/sans fonts carelessly
 - Use colored shadows or noise textures
 - Scale logo below 24px without testing
 - Create or publish alternate public logo variants
-- Add transparency overlays that muddy the palette
-- Use the accent blue for general UI (reserve for actionable states)
+- Use the accent blue for general UI (reserve for actionable states only)
 
 ---
 
@@ -525,12 +546,13 @@ letter-spacing: -0.02em;
 
 ## 13. Versioning & Maintenance
 
-**Current Version:** 1.0.0 (2026-04-28)
+**Current Version:** 1.1.0 (2026-05-24)
 
-**Last Reviewed:** 2026-04-28
-**Reviewed By:** OpenCoven Brand Core
+**Last Reviewed:** 2026-05-24
+**Reviewed By:** Val + Nova
 
 **Change Log:**
+- **v1.1.0** – Field manual redesign: no-gradient rule (hard), flat violet `#9A8ECD`, JetBrains Mono for labels, solid surfaces, sharp corners, hover = border-color only. Removed all gradient/glow/glass patterns.
 - **v1.0.0** – Initial production-ready system
 
 **Next Review:** Quarterly or when major product change occurs
