@@ -392,17 +392,30 @@ fn record_session_exit(
     result: pty_runner::PtyRunResult,
 ) -> Result<()> {
     let conn = crate::store::open_store(&coven_home.join("coven.sqlite3"))?;
-    if crate::store::get_session(&conn, session_id)?
-        .map(|session| session.status == "running")
-        .unwrap_or(false)
-    {
-        crate::store::update_session_status(
-            &conn,
-            session_id,
-            result.status,
-            result.exit_code,
-            &crate::api::current_timestamp(),
-        )?;
+    if let Some(session) = crate::store::get_session(&conn, session_id)? {
+        if session.status == "running" {
+            // For conversation-grouped sessions (chat), a clean harness exit
+            // is not the end of the conversation — the user can prompt again
+            // and the daemon will resume into a sibling session under the
+            // same `conversation_id`. Persist `idle` so API consumers (the
+            // cockpit / dashboard) can distinguish "harness child terminated
+            // cleanly, conversation still extendable" from "session failed".
+            // Failed exits (non-zero / wait error) still surface as failure
+            // so consumers don't mistake a crashed harness for a fresh slot.
+            let persisted_status =
+                if session.conversation_id.is_some() && result.status == "completed" {
+                    "idle"
+                } else {
+                    result.status
+                };
+            crate::store::update_session_status(
+                &conn,
+                session_id,
+                persisted_status,
+                result.exit_code,
+                &crate::api::current_timestamp(),
+            )?;
+        }
     }
     crate::store::insert_event(
         &conn,
@@ -2023,6 +2036,63 @@ mod tests {
         let conn = crate::store::open_store(&temp_dir.path().join("coven.sqlite3"))?;
         let sessions = crate::store::list_sessions(&conn)?;
         assert_eq!(session_status(&sessions, "session-1"), "killed");
+        Ok(())
+    }
+
+    #[test]
+    fn clean_exit_on_conversational_session_persists_as_idle() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let conn = crate::store::open_store(&temp_dir.path().join("coven.sqlite3"))?;
+        let mut session = session_record("session-1");
+        session.status = "running".to_string();
+        session.conversation_id = Some("conv-abc".to_string());
+        crate::store::insert_session(&conn, &session)?;
+        drop(conn);
+
+        record_session_exit(
+            temp_dir.path(),
+            "session-1",
+            pty_runner::PtyRunResult {
+                status: "completed",
+                exit_code: Some(0),
+            },
+        )?;
+
+        let conn = crate::store::open_store(&temp_dir.path().join("coven.sqlite3"))?;
+        let stored = crate::store::get_session(&conn, "session-1")?.unwrap();
+        // Persisted status is `idle` (conversation still extendable), exit code is
+        // preserved so consumers can see the prior child exited cleanly, and the
+        // `exit` event still says `completed` so transcripts remain accurate.
+        assert_eq!(stored.status, "idle");
+        assert_eq!(stored.exit_code, Some(0));
+        let events = crate::store::list_events(&conn, "session-1")?;
+        let exit = events.iter().find(|event| event.kind == "exit").unwrap();
+        assert!(exit.payload_json.contains("\"status\":\"completed\""));
+        Ok(())
+    }
+
+    #[test]
+    fn failed_exit_on_conversational_session_still_marks_failed() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let conn = crate::store::open_store(&temp_dir.path().join("coven.sqlite3"))?;
+        let mut session = session_record("session-1");
+        session.status = "running".to_string();
+        session.conversation_id = Some("conv-abc".to_string());
+        crate::store::insert_session(&conn, &session)?;
+        drop(conn);
+
+        record_session_exit(
+            temp_dir.path(),
+            "session-1",
+            pty_runner::PtyRunResult {
+                status: "failed",
+                exit_code: Some(2),
+            },
+        )?;
+
+        let conn = crate::store::open_store(&temp_dir.path().join("coven.sqlite3"))?;
+        let sessions = crate::store::list_sessions(&conn)?;
+        assert_eq!(session_status(&sessions, "session-1"), "failed");
         Ok(())
     }
 
