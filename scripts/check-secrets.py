@@ -116,6 +116,14 @@ def is_github_action_sha_ref_token(token: str) -> bool:
     return bool(_GITHUB_ACTION_SHA_REF.match(token))
 
 
+def is_known_fake_private_key_fixture(line: str) -> bool:
+    return (
+        "-----BEGIN PRIVATE KEY-----" in line
+        and "\\nfakefakefake" in line
+        and "\\n-----END PRIVATE KEY-----" in line
+    )
+
+
 def is_programming_identifier_token(token: str) -> bool:
     """Whether `token` looks like a snake_case / SCREAMING_SNAKE_CASE identifier
     (optionally suffixed with a `.method` call), a workflow-style relative file
@@ -157,6 +165,8 @@ def scan_text(text: str, path: str) -> list[tuple[str, int, str]]:
     for line_number, line in enumerate(text.splitlines(), 1):
         allow = bool(ALLOW_LINE.search(line))
         for name, pattern in SECRET_RULES:
+            if name == "private_key" and is_known_fake_private_key_fixture(line):
+                continue
             if pattern.search(line) and not (allow and name != "private_key"):
                 hits.append((path, line_number, name))
         if allow:

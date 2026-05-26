@@ -62,6 +62,24 @@ class SecretGuardLockfileTests(unittest.TestCase):
 
         self.assertEqual(hits, [("packages/openclaw-coven/pnpm-lock.yaml", 1, "generic_assignment")])
 
+    def test_known_fake_private_key_fixture_does_not_trigger(self) -> None:
+        text = (
+            '    "-----BEGIN PRIVATE KEY-----\\n'
+            'fakefakefakefakefakefakefake\\n'
+            '-----END PRIVATE KEY-----";'
+        )
+
+        hits = check_secrets.scan_text(text, "crates/coven-cli/src/privacy.rs")
+
+        self.assertEqual(hits, [])
+
+    def test_real_private_key_header_still_triggers(self) -> None:
+        text = "-----BEGIN PRIVATE KEY-----\nnot-a-placeholder\n-----END PRIVATE KEY-----"
+
+        hits = check_secrets.scan_text(text, "docs/example.md")
+
+        self.assertEqual(hits, [("docs/example.md", 1, "private_key")])
+
     def test_opencoven_github_urls_do_not_trigger_high_entropy(self) -> None:
         text = (
             "The canonical brand system lives in "
