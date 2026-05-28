@@ -29,6 +29,11 @@ const DEFAULT_HARNESSES: Record<string, string> = {
   "codex-cli": "codex",
   claude: "claude",
   "claude-cli": "claude",
+  // coven-code: routes as claude harness (same ACP-over-stdio protocol)
+  // Until cast-codes has a dedicated coven-code proto variant, this lets
+  // OpenClaw dispatch `coven-code acp` sessions through the Coven runtime.
+  "coven-code": "claude",
+  "covencode": "claude",
 };
 const SUPPORTED_COVEN_API_VERSION = "v1";
 const HEALTH_CHECK_TIMEOUT_MS = 5_000;
