@@ -235,6 +235,18 @@ That single push triggers `.github/workflows/release-npm.yml`, which:
 
 There is no `NPM_TOKEN` secret to rotate and no `workflow_dispatch` manual button — the signed tag is the only release lever. If the workflow ever refuses the tag, see [`docs/reference/releasing.md#recovering-from-a-refused-release`](docs/reference/releasing.md#recovering-from-a-refused-release).
 
+## Ecosystem
+
+| Repo | Description |
+|---|---|
+| [coven](https://github.com/OpenCoven/coven) | Core harness runtime — this repo |
+| [cast-codes](https://github.com/OpenCoven/cast-codes) | Canonical OpenCoven desktop application |
+| [coven-code](https://github.com/OpenCoven/coven-code) | Code agent harness for OpenCoven |
+| [desktop-use](https://github.com/OpenCoven/desktop-use) | Desktop automation / computer-use plugin |
+| [coven-reach](https://github.com/OpenCoven/coven-reach) | Reach / integration layer |
+| [coven-scout](https://github.com/OpenCoven/coven-scout) | Fast Rust MCP server — sandboxed filesystem & web access for agents |
+| [coven-docs](https://github.com/OpenCoven/coven-docs) | Documentation site |
+
 ## Community
 
 - Discord: `discord.gg/opencoven`
