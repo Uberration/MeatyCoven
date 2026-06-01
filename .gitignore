@@ -25,3 +25,6 @@ __pycache__/
 *.pyc
 
 /npm/dist/
+
+# Git worktrees (project-local)
+.worktrees/
