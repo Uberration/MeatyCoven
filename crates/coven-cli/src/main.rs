@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::ffi::OsString;
-use std::io::{self, BufRead, IsTerminal, Read, Write};
+#[cfg(unix)]
+use std::io::Read;
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
@@ -800,11 +802,15 @@ fn run_daemon_command(command: DaemonCommand) -> Result<()> {
             {
                 daemon::serve_forever(&home, current_timestamp(), tcp.as_deref())?;
             }
-            #[cfg(not(unix))]
+            #[cfg(windows)]
+            {
+                daemon::serve_forever(&home, current_timestamp(), tcp.as_deref())?;
+            }
+            #[cfg(not(any(unix, windows)))]
             {
                 let _ = tcp;
                 anyhow::bail!(
-                    "coven daemon server is only implemented on Unix-like systems for now"
+                    "coven daemon server is only implemented on Unix-like systems and Windows for now"
                 );
             }
         }
@@ -1393,6 +1399,7 @@ fn send_session_input(_coven_home: &Path, _session_id: &str, _data: &str) -> Res
     anyhow::bail!("Coven attach input forwarding is only implemented on Unix-like systems for now")
 }
 
+#[cfg(unix)]
 fn ensure_successful_http_response(response: &str) -> Result<()> {
     let status = response
         .lines()
@@ -2215,6 +2222,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn successful_http_response_accepts_2xx_only() {
         assert!(ensure_successful_http_response("HTTP/1.1 202 Accepted\r\n\r\n{}").is_ok());
