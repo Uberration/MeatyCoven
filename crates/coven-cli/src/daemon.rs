@@ -149,21 +149,15 @@ impl LiveSessionRuntime {
 
 impl SessionRuntime for LiveSessionRuntime {
     fn launch_session(&self, launch: &SessionLaunch) -> Result<()> {
-        let familiar_ctx = launch.familiar_id.as_deref().and_then(|fid| {
-            self.coven_home.as_ref().and_then(|home| {
-                crate::cockpit_sources::read_familiars(home)
-                    .ok()
-                    .and_then(|familiars| {
-                        familiars.into_iter().find(|f| f.id == fid).map(|f| {
-                            crate::harness::FamiliarContext {
-                                id: f.id,
-                                display_name: f.display_name,
-                                role: Some(f.role).filter(|r| !r.is_empty()),
-                            }
-                        })
-                    })
-            })
-        });
+        let familiar_ctx = match (&self.coven_home, launch.familiar_id.as_deref()) {
+            (Some(home), familiar_id) => {
+                crate::familiar_identity::resolve_optional(home, familiar_id)?
+            }
+            (None, Some(familiar_id)) => {
+                anyhow::bail!("cannot resolve familiar `{familiar_id}` without COVEN_HOME")
+            }
+            (None, None) => None,
+        };
         let command = pty_runner::build_harness_command_with_conversation(
             &launch.harness,
             &launch.prompt,
@@ -2387,6 +2381,7 @@ mod tests {
                 created_at: "2026-04-27T10:00:00Z".to_string(),
                 updated_at: "2026-04-27T10:00:00Z".to_string(),
                 conversation_id: None,
+                familiar_id: None,
                 labels: Vec::new(),
                 visibility: "private".to_string(),
             },
@@ -2551,6 +2546,7 @@ mod tests {
             created_at: "2026-04-27T07:00:00Z".to_string(),
             updated_at: "2026-04-27T07:00:00Z".to_string(),
             conversation_id: None,
+            familiar_id: None,
             labels: Vec::new(),
             visibility: "private".to_string(),
         }

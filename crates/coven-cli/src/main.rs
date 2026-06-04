@@ -18,6 +18,7 @@ mod cockpit_sources;
 mod control_plane;
 mod daemon;
 mod encrypted_artifacts;
+mod familiar_identity;
 mod harness;
 mod openclaw_repo;
 mod patch;
@@ -660,6 +661,7 @@ fn launch_patch_session(request: &patch::PatchRequest) -> Result<String> {
         created_at: now.clone(),
         updated_at: now.clone(),
         conversation_id: None,
+        familiar_id: None,
         labels: Vec::new(),
         visibility: "private".to_string(),
     };
@@ -882,6 +884,7 @@ fn run_session(
         )
     })?;
     let cwd = project::resolve_inside_root(&project_root, cwd).context("failed to resolve cwd")?;
+    let coven_home = coven_home_dir()?;
     let store_path = coven_store_path()?;
     let conn = store::open_store(&store_path)?;
     let now = Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true);
@@ -900,22 +903,7 @@ fn run_session(
     // via that flag in build_harness_command_with_conversation; the prompt stays
     // clean. For harnesses without one (Codex), we prepend a bracketed identity
     // preamble to the prompt here so the integration layer remains harness-agnostic.
-    let familiar_ctx: Option<harness::FamiliarContext> = familiar_id.and_then(|fid| {
-        coven_home_dir().ok().and_then(|home| {
-            cockpit_sources::read_familiars(&home)
-                .ok()
-                .and_then(|familiars| {
-                    familiars
-                        .into_iter()
-                        .find(|f| f.id == fid)
-                        .map(|f| harness::FamiliarContext {
-                            id: f.id,
-                            display_name: f.display_name,
-                            role: Some(f.role).filter(|r| !r.is_empty()),
-                        })
-                })
-        })
-    });
+    let familiar_ctx = familiar_identity::resolve_optional(&coven_home, familiar_id)?;
     let spec = harness::built_in_harness_specs()
         .into_iter()
         .find(|s| s.id == selected_harness.id);
@@ -972,6 +960,7 @@ fn run_session(
             created_at: now.clone(),
             updated_at: now,
             conversation_id: None,
+            familiar_id: familiar_ctx.as_ref().map(|f| f.id.clone()),
             labels,
             visibility: visibility.unwrap_or("private").to_string(),
         };
@@ -2370,6 +2359,7 @@ mod tests {
             created_at: "2026-04-27T06:00:00Z".to_string(),
             updated_at: "2026-04-27T06:00:00Z".to_string(),
             conversation_id: None,
+            familiar_id: None,
             labels: Vec::new(),
             visibility: "private".to_string(),
         };
@@ -2393,6 +2383,7 @@ mod tests {
             created_at: "2026-05-14T07:00:00Z".to_string(),
             updated_at: "2026-05-14T07:00:01Z".to_string(),
             conversation_id: None,
+            familiar_id: None,
             labels: Vec::new(),
             visibility: "private".to_string(),
         };
@@ -2507,6 +2498,7 @@ mod tests {
             created_at: "2026-05-08T07:00:00Z".to_string(),
             updated_at: "2026-05-08T07:05:00Z".to_string(),
             conversation_id: None,
+            familiar_id: None,
             labels: Vec::new(),
             visibility: "private".to_string(),
         }
