@@ -110,8 +110,7 @@ pub fn get_eval_loop_state(
         Ok(raw) => raw,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => {
-            return Err(err)
-                .with_context(|| format!("failed to read {}", tsv_path.display()))
+            return Err(err).with_context(|| format!("failed to read {}", tsv_path.display()))
         }
     };
 
@@ -154,11 +153,7 @@ pub fn get_eval_loop_state(
 /// the iteration. The daemon does not run the loop directly.
 ///
 /// Returns `Err` if a run is already in progress (lock file exists).
-pub fn enqueue_run(
-    coven_home: &Path,
-    familiar_id: &str,
-    track: &str,
-) -> Result<RunSpec> {
+pub fn enqueue_run(coven_home: &Path, familiar_id: &str, track: &str) -> Result<RunSpec> {
     let track = validate_track(track)?;
     let workspace = familiar_workspace(coven_home, familiar_id);
     let eval_dir = workspace.join(EVAL_LOOP_DIR);
@@ -181,8 +176,7 @@ pub fn enqueue_run(
     // Write spec first, then lock — the familiar watches for lock disappearance
     // to know a run completed. Atomic enough: both are small local writes.
     let spec_path = eval_dir.join(RUN_SPEC_FILE);
-    let spec_json =
-        serde_json::to_string_pretty(&spec).context("failed to serialize run spec")?;
+    let spec_json = serde_json::to_string_pretty(&spec).context("failed to serialize run spec")?;
     fs::write(&spec_path, &spec_json)
         .with_context(|| format!("failed to write run spec at {}", spec_path.display()))?;
 
@@ -209,18 +203,13 @@ fn familiar_workspace(coven_home: &Path, familiar_id: &str) -> PathBuf {
 }
 
 fn is_running(workspace: &Path) -> bool {
-    workspace
-        .join(EVAL_LOOP_DIR)
-        .join(RUN_LOCK_FILE)
-        .exists()
+    workspace.join(EVAL_LOOP_DIR).join(RUN_LOCK_FILE).exists()
 }
 
 fn validate_track(track: &str) -> Result<&str> {
     match track {
         "synthesis" | "prompt" | "memory" => Ok(track),
-        other => anyhow::bail!(
-            "track must be `synthesis`, `prompt`, or `memory`, got `{other}`"
-        ),
+        other => anyhow::bail!("track must be `synthesis`, `prompt`, or `memory`, got `{other}`"),
     }
 }
 
@@ -357,9 +346,36 @@ mod tests {
         fs::create_dir_all(&workspace).unwrap();
         let tsv = format!(
             "{}{}{}",
-            tsv_line("2026-06-05T10:00:00Z", "synthesis", 1, "S1", 0.60, 0.68, 0.08, "ACCEPT"),
-            tsv_line("2026-06-05T11:00:00Z", "prompt",    2, "P1", 0.55, 0.50, -0.05, "REVERT"),
-            tsv_line("2026-06-05T12:00:00Z", "memory",    3, "M1", 0.70, 0.74, 0.04, "ACCEPT"),
+            tsv_line(
+                "2026-06-05T10:00:00Z",
+                "synthesis",
+                1,
+                "S1",
+                0.60,
+                0.68,
+                0.08,
+                "ACCEPT"
+            ),
+            tsv_line(
+                "2026-06-05T11:00:00Z",
+                "prompt",
+                2,
+                "P1",
+                0.55,
+                0.50,
+                -0.05,
+                "REVERT"
+            ),
+            tsv_line(
+                "2026-06-05T12:00:00Z",
+                "memory",
+                3,
+                "M1",
+                0.70,
+                0.74,
+                0.04,
+                "ACCEPT"
+            ),
         );
         fs::write(workspace.join(RESULTS_TSV), tsv).unwrap();
 
@@ -442,7 +458,6 @@ mod tests {
         assert!(validate_track("harness").is_err());
         assert!(validate_track("SYNTHESIS").is_err()); // case-sensitive
     }
-
 }
 
 #[cfg(test)]

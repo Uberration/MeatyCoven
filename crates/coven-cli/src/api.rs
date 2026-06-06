@@ -206,7 +206,9 @@ pub fn handle_request_with_runtime(
         ("GET", p) if p.starts_with("/skills/eval-loop/") && !p.ends_with("/run") => {
             let familiar_id = p.trim_start_matches("/skills/eval-loop/");
             match crate::eval_loop::get_eval_loop_state(coven_home, familiar_id)? {
-                Some(state) => json_response(200, &serde_json::json!({ "ok": true, "state": state })),
+                Some(state) => {
+                    json_response(200, &serde_json::json!({ "ok": true, "state": state }))
+                }
                 None => api_error(
                     404,
                     "skill_not_active",
@@ -224,11 +226,19 @@ pub fn handle_request_with_runtime(
                 .and_then(|v| v.get("track").and_then(|t| t.as_str()).map(str::to_string))
                 .unwrap_or_else(|| "synthesis".to_string());
             match crate::eval_loop::enqueue_run(coven_home, familiar_id, &track) {
-                Ok(spec) => json_response(202, &serde_json::json!({ "ok": true, "runId": spec.run_id, "track": spec.track })),
+                Ok(spec) => json_response(
+                    202,
+                    &serde_json::json!({ "ok": true, "runId": spec.run_id, "track": spec.track }),
+                ),
                 Err(err) => {
                     let msg = err.to_string();
                     if msg.contains("already in progress") {
-                        api_error(409, "run_in_progress", &msg, Some(serde_json::json!({ "familiarId": familiar_id })))
+                        api_error(
+                            409,
+                            "run_in_progress",
+                            &msg,
+                            Some(serde_json::json!({ "familiarId": familiar_id })),
+                        )
                     } else if msg.contains("track must be") {
                         api_error(400, "invalid_request", &msg, None)
                     } else {
