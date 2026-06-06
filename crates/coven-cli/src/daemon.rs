@@ -1444,6 +1444,7 @@ mod tests {
             conversation: None,
             conversation_id: None,
             familiar_id: None,
+            caller_familiar_id: None,
         };
 
         let error = SessionRuntime::launch_session(&runtime, &launch).unwrap_err();
