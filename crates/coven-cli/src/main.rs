@@ -479,27 +479,47 @@ fn run_sessions_search(query: &str, json: bool) -> Result<()> {
 }
 
 fn run_shared_interactive_shell() -> Result<()> {
-    // Delegate to coven-code (the unified Coven Code TUI) when it is
-    // installed and the user has not explicitly opted out via
-    // `COVEN_LEGACY_TUI=1`. coven-code now hosts the /coven substrate
-    // surface, so it is the canonical interactive front-end.
-    if interactive_delegation_enabled() {
-        if let Some(binary) = coven_code_binary() {
-            try_delegate_to_coven_code(&binary)?;
-            // try_delegate_to_coven_code only returns on failure to exec —
-            // success replaces this process. Fall through to legacy on error.
-        }
+    // coven-code is the canonical interactive front-end. The only escape
+    // hatch is an explicit `COVEN_LEGACY_TUI=1`, which keeps the legacy
+    // in-process tui::shell available during the transition.
+    if legacy_tui_opted_in() {
+        eprintln!(
+            "coven: warning — COVEN_LEGACY_TUI is set; falling back to the legacy slash shell.\n\
+             coven: the legacy shell is deprecated and will be removed in a future release.\n\
+             coven: install coven-code to use the supported interactive UI:\n\
+             coven:   npm install -g @opencoven/coven-code\n\
+             coven:   # or: curl -fsSL https://github.com/OpenCoven/coven-code/releases/latest/download/install.sh | bash\n"
+        );
+        return match interactive_shell_route(None, io::stdin().is_terminal(), io::stdout().is_terminal()) {
+            InteractiveShellRoute::Chat => tui::chat::run_chat(),
+            InteractiveShellRoute::PlainCast => tui::shell::run(),
+        };
     }
-    match interactive_shell_route(None, io::stdin().is_terminal(), io::stdout().is_terminal()) {
-        InteractiveShellRoute::Chat => tui::chat::run_chat(),
-        InteractiveShellRoute::PlainCast => tui::shell::run(),
+
+    match coven_code_binary() {
+        Some(binary) => try_delegate_to_coven_code(&binary),
+        None => Err(missing_coven_code_error()),
     }
 }
 
-/// Whether to consider handing the interactive shell off to coven-code.
-/// `COVEN_LEGACY_TUI=1` forces the in-process tui::shell experience.
-fn interactive_delegation_enabled() -> bool {
-    !matches!(std::env::var("COVEN_LEGACY_TUI").as_deref(), Ok("1") | Ok("true"))
+/// Build a single, user-actionable error for the missing-coven-code case.
+fn missing_coven_code_error() -> anyhow::Error {
+    anyhow!(
+        "coven-code is required for the interactive Coven UI but was not found on PATH \
+         or under ~/.coven-code/bin.\n\n\
+         Install it with one of:\n\
+           npm install -g @opencoven/coven-code\n\
+           curl -fsSL https://github.com/OpenCoven/coven-code/releases/latest/download/install.sh | bash\n\n\
+         If you need the legacy slash shell temporarily, run:\n\
+           COVEN_LEGACY_TUI=1 coven\n\
+         (the legacy shell will be removed in a future release.)"
+    )
+}
+
+/// `COVEN_LEGACY_TUI=1` (or `=true`) opts back into the in-process tui::shell.
+/// This is a transitional escape hatch, not the supported path.
+fn legacy_tui_opted_in() -> bool {
+    matches!(std::env::var("COVEN_LEGACY_TUI").as_deref(), Ok("1") | Ok("true"))
 }
 
 /// Locate the `coven-code` binary on PATH or in `~/.coven-code/bin/`.
@@ -2795,19 +2815,32 @@ mod tests {
     }
 
     #[test]
-    fn delegation_disabled_when_legacy_env_set() {
+    fn legacy_tui_opt_in_respects_env_var() {
         // SAFETY: tests in this crate run on a single thread by default; if
         // that ever changes, gate this behind a serial mutex.
         let prev = std::env::var("COVEN_LEGACY_TUI").ok();
         std::env::set_var("COVEN_LEGACY_TUI", "1");
-        assert!(!interactive_delegation_enabled());
+        assert!(legacy_tui_opted_in());
         std::env::set_var("COVEN_LEGACY_TUI", "true");
-        assert!(!interactive_delegation_enabled());
+        assert!(legacy_tui_opted_in());
+        std::env::set_var("COVEN_LEGACY_TUI", "0");
+        assert!(!legacy_tui_opted_in());
         std::env::remove_var("COVEN_LEGACY_TUI");
-        assert!(interactive_delegation_enabled());
+        assert!(!legacy_tui_opted_in());
         if let Some(v) = prev {
             std::env::set_var("COVEN_LEGACY_TUI", v);
         }
+    }
+
+    #[test]
+    fn missing_coven_code_error_includes_install_instructions() {
+        // The error message is the primary onboarding surface when coven-code
+        // is absent, so it must list at least one concrete install path and
+        // mention the legacy escape hatch.
+        let msg = format!("{:#}", missing_coven_code_error());
+        assert!(msg.contains("npm install -g @opencoven/coven-code"));
+        assert!(msg.contains("install.sh"));
+        assert!(msg.contains("COVEN_LEGACY_TUI=1"));
     }
 
     #[test]
