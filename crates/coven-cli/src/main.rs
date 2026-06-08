@@ -490,7 +490,11 @@ fn run_shared_interactive_shell() -> Result<()> {
              coven:   npm install -g @opencoven/coven-code\n\
              coven:   # or: curl -fsSL https://github.com/OpenCoven/coven-code/releases/latest/download/install.sh | bash\n"
         );
-        return match interactive_shell_route(None, io::stdin().is_terminal(), io::stdout().is_terminal()) {
+        return match interactive_shell_route(
+            None,
+            io::stdin().is_terminal(),
+            io::stdout().is_terminal(),
+        ) {
             InteractiveShellRoute::Chat => tui::chat::run_chat(),
             InteractiveShellRoute::PlainCast => tui::shell::run(),
         };
@@ -519,7 +523,10 @@ fn missing_coven_code_error() -> anyhow::Error {
 /// `COVEN_LEGACY_TUI=1` (or `=true`) opts back into the in-process tui::shell.
 /// This is a transitional escape hatch, not the supported path.
 fn legacy_tui_opted_in() -> bool {
-    matches!(std::env::var("COVEN_LEGACY_TUI").as_deref(), Ok("1") | Ok("true"))
+    matches!(
+        std::env::var("COVEN_LEGACY_TUI").as_deref(),
+        Ok("1") | Ok("true")
+    )
 }
 
 /// Locate the `coven-code` binary on PATH or in `~/.coven-code/bin/`.
@@ -554,9 +561,9 @@ fn is_executable_file(path: &Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        return std::fs::metadata(path)
+        std::fs::metadata(path)
             .map(|m| m.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false);
+            .unwrap_or(false)
     }
     #[cfg(not(unix))]
     {
@@ -573,7 +580,10 @@ fn try_delegate_to_coven_code(binary: &Path) -> Result<()> {
     // and the optional leading `tui` subcommand because coven-code expects
     // its own argv layout.
     let mut args: Vec<OsString> = std::env::args_os().skip(1).collect();
-    if matches!(args.first().and_then(|a| a.to_str()), Some("tui") | Some("chat")) {
+    if matches!(
+        args.first().and_then(|a| a.to_str()),
+        Some("tui") | Some("chat")
+    ) {
         args.remove(0);
     }
     command.args(args);
@@ -583,12 +593,14 @@ fn try_delegate_to_coven_code(binary: &Path) -> Result<()> {
         use std::os::unix::process::CommandExt;
         let err = command.exec();
         // exec only returns on failure.
-        return Err(anyhow!("failed to exec coven-code: {err}"));
+        Err(anyhow!("failed to exec coven-code: {err}"))
     }
 
     #[cfg(not(unix))]
     {
-        let status = command.status().map_err(|e| anyhow!("failed to launch coven-code: {e}"))?;
+        let status = command
+            .status()
+            .map_err(|e| anyhow!("failed to launch coven-code: {e}"))?;
         std::process::exit(status.code().unwrap_or(0));
     }
 }
@@ -615,6 +627,24 @@ fn run_doctor() -> Result<()> {
     {
         Some(root) => println!("Project: {}", root.display()),
         None => println!("Project: not inside a git/project root yet"),
+    }
+
+    println!("\nDaemon:");
+    match daemon::background_server_status(&home)? {
+        Some(daemon::DaemonStatusState::Running(status)) => {
+            let health = api::health_response(Some(status.clone()));
+            println!(
+                "  status=running ok={} pid={} socket={}",
+                health.ok, status.pid, status.socket
+            );
+        }
+        Some(daemon::DaemonStatusState::Stale(status)) => {
+            println!(
+                "  status=stale ok=false pid={} socket={}",
+                status.pid, status.socket
+            );
+        }
+        None => println!("  status=stopped"),
     }
 
     let repos_config = repos_config::load_with_settings(&home, settings::cached())?;

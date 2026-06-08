@@ -1,9 +1,9 @@
 //! Document ingestion — chunking, hashing, dedup, embedding, indexing
 
+use crate::{db::MetaDb, embed::Embedder, index::VecIndex, MemoryDoc};
 use anyhow::Result;
-use std::path::Path;
 use sha2::{Digest, Sha256};
-use crate::{MemoryDoc, db::MetaDb, embed::Embedder, index::VecIndex};
+use std::path::Path;
 
 /// Chunk size in characters (~400 chars ≈ ~100 tokens — good for 768-dim nomic)
 const CHUNK_SIZE: usize = 400;
@@ -82,9 +82,9 @@ pub fn ingest_dir(
         .filter_map(|e| e.ok())
         .filter(|e| {
             e.file_type().is_file()
-                && e.path().extension().map_or(false, |ext| {
-                    matches!(ext.to_str(), Some("md" | "txt" | "toml" | "rs"))
-                })
+                && e.path()
+                    .extension()
+                    .is_some_and(|ext| matches!(ext.to_str(), Some("md" | "txt" | "toml" | "rs")))
         })
     {
         match ingest_file(entry.path(), familiar, db, index, embedder) {
@@ -113,7 +113,9 @@ fn chunk_text(text: &str) -> Vec<(usize, String)> {
         if !trimmed.is_empty() {
             chunks.push((start, trimmed));
         }
-        if end == chars.len() { break; }
+        if end == chars.len() {
+            break;
+        }
         start += CHUNK_SIZE - CHUNK_OVERLAP;
     }
     chunks

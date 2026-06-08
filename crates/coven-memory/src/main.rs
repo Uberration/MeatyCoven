@@ -18,7 +18,10 @@ use coven_memory::{
 };
 
 #[derive(Parser)]
-#[command(name = "coven-memory", about = "Archival memory layer for Coven familiars")]
+#[command(
+    name = "coven-memory",
+    about = "Archival memory layer for Coven familiars"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Cmd,
@@ -73,13 +76,17 @@ fn main() -> Result<()> {
                 eprintln!("⟳  Ingesting directory: {}", path.display());
                 let (files, chunks) = ingest_dir(&path, &familiar, &db, &mut index, &mut embedder)?;
                 index.save()?;
-                println!("✓  Ingested {files} new files ({chunks} chunks) for familiar '{familiar}'");
+                println!(
+                    "✓  Ingested {files} new files ({chunks} chunks) for familiar '{familiar}'"
+                );
             } else {
                 eprintln!("⟳  Ingesting file: {}", path.display());
                 let n = ingest_file(&path, &familiar, &db, &mut index, &mut embedder)?;
                 index.save()?;
-                println!("✓  Ingested {n} new chunks from {} for familiar '{familiar}'",
-                    path.display());
+                println!(
+                    "✓  Ingested {n} new chunks from {} for familiar '{familiar}'",
+                    path.display()
+                );
             }
         }
 
@@ -109,12 +116,19 @@ fn main() -> Result<()> {
 
             println!("\n── Archival Memory Search ──────────────────────────");
             println!("  Query: {query}");
-            if let Some(f) = &familiar { println!("  Familiar: {f}"); }
+            if let Some(f) = &familiar {
+                println!("  Familiar: {f}");
+            }
             println!("────────────────────────────────────────────────────\n");
 
             for (doc, score) in docs.iter().zip(scores.iter()) {
-                let short_path = doc.path
-                    .replace(&dirs_next::home_dir().unwrap_or_default().to_string_lossy().to_string(), "~");
+                let short_path = doc.path.replace(
+                    &dirs_next::home_dir()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string(),
+                    "~",
+                );
                 println!("  [{score:.3}] {short_path}  (familiar: {})", doc.familiar);
                 println!("  {}\n", truncate(&doc.chunk, 280));
             }
@@ -139,7 +153,7 @@ fn truncate(s: &str, max: usize) -> String {
     let mut s = s.replace('\n', " ");
     if s.len() > max {
         s.truncate(max);
-        s.push_str("…");
+        s.push('…');
     }
     s
 }

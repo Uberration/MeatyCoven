@@ -1,9 +1,9 @@
 //! TurboVec IdMapIndex wrapper — persistent 4-bit compressed ANN index with stable ids
 
+use crate::embed::DIM;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use turbovec::IdMapIndex;
-use crate::embed::DIM;
 
 pub const BIT_WIDTH: usize = 4;
 
@@ -25,7 +25,10 @@ impl VecIndex {
             IdMapIndex::new(DIM, BIT_WIDTH)
                 .map_err(|e| anyhow::anyhow!("creating index: {:?}", e))?
         };
-        Ok(Self { inner, path: path.to_owned() })
+        Ok(Self {
+            inner,
+            path: path.to_owned(),
+        })
     }
 
     /// Add a batch of (id, embedding) pairs (flat row-major: each embedding is DIM f32s)
@@ -61,7 +64,8 @@ impl VecIndex {
 
     /// Persist to disk
     pub fn save(&self) -> Result<()> {
-        self.inner.write(&self.path)
+        self.inner
+            .write(&self.path)
             .with_context(|| format!("saving index to {}", self.path.display()))?;
         Ok(())
     }

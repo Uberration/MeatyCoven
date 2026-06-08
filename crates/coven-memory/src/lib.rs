@@ -10,8 +10,7 @@ pub mod embed;
 pub mod index;
 pub mod ingest;
 
-use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Default paths under ~/.coven/memory/
 pub fn default_memory_dir() -> PathBuf {

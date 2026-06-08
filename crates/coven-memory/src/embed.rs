@@ -21,9 +21,7 @@ impl Embedder {
 
     /// Embed a batch of texts — returns Vec<Vec<f32>>, each of length DIM
     pub fn embed_batch(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        let embeddings = self.model
-            .embed(texts.to_vec(), None)
-            .context("embedding batch")?;
+        let embeddings = self.model.embed(texts, None).context("embedding batch")?;
         Ok(embeddings)
     }
 
