@@ -7,12 +7,17 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use std::ffi::CString;
 use std::io::{BufRead, BufReader, Read};
 #[cfg(unix)]
 use std::os::unix::{
+    ffi::OsStrExt,
     fs::{FileTypeExt, MetadataExt, PermissionsExt},
     net::{UnixListener, UnixStream},
 };
+#[cfg(unix)]
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -1062,6 +1067,134 @@ pub fn bind_api_socket(coven_home: &Path) -> Result<UnixListener> {
 }
 
 #[cfg(unix)]
+pub fn daemon_recovery_log_path(coven_home: &Path) -> PathBuf {
+    coven_home.join("daemon-recovery.log")
+}
+
+#[cfg(unix)]
+pub fn append_daemon_recovery_log(coven_home: &Path, msg: &str) {
+    let path = daemon_recovery_log_path(coven_home);
+    let line = format!("[{}] {}\n", crate::api::current_timestamp(), msg);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// Cleans up the Unix-domain socket file and `daemon.json` when the daemon
+/// exits via any path that runs destructors — normal return, `Err` propagation,
+/// or panic unwinding. This is what prevents orphaned `~/.coven/coven.sock`
+/// files from appearing when the daemon crashes (see OpenCoven/coven#197).
+/// SIGKILL and `_exit` bypass Drop; the explicit signal handler covers SIGTERM
+/// / SIGINT / SIGHUP.
+#[cfg(unix)]
+struct ShutdownGuard {
+    socket_path: PathBuf,
+    status_path: PathBuf,
+}
+
+#[cfg(unix)]
+impl Drop for ShutdownGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.socket_path);
+        let _ = std::fs::remove_file(&self.status_path);
+    }
+}
+
+// Paths captured at signal-handler install time so the async-signal-safe
+// handler can unlink them without allocating. CString avoids touching the
+// allocator from inside the handler.
+#[cfg(unix)]
+static SIGNAL_SOCKET_PATH: OnceLock<CString> = OnceLock::new();
+#[cfg(unix)]
+static SIGNAL_STATUS_PATH: OnceLock<CString> = OnceLock::new();
+
+#[cfg(unix)]
+extern "C" fn handle_termination_signal(sig: libc::c_int) {
+    // Only async-signal-safe calls below. unlink(2), write(2), and _exit(2) are
+    // all on the POSIX async-signal-safe list. Anything that might allocate or
+    // take a lock is forbidden.
+    if let Some(path) = SIGNAL_SOCKET_PATH.get() {
+        unsafe {
+            libc::unlink(path.as_ptr());
+        }
+    }
+    if let Some(path) = SIGNAL_STATUS_PATH.get() {
+        unsafe {
+            libc::unlink(path.as_ptr());
+        }
+    }
+    let msg: &[u8] = b"coven daemon: received termination signal, exiting\n";
+    unsafe {
+        libc::write(
+            libc::STDERR_FILENO,
+            msg.as_ptr() as *const libc::c_void,
+            msg.len(),
+        );
+        libc::_exit(128 + sig);
+    }
+}
+
+#[cfg(unix)]
+fn install_termination_signal_handlers(socket_path: &Path, status_path: &Path) -> Result<()> {
+    let socket_cstr = CString::new(socket_path.as_os_str().as_bytes())
+        .context("daemon socket path contained an interior NUL")?;
+    let status_cstr = CString::new(status_path.as_os_str().as_bytes())
+        .context("daemon status path contained an interior NUL")?;
+    // OnceLock::set is idempotent: a second `coven daemon serve` invocation in
+    // the same process (only happens in tests) reuses the first install.
+    let _ = SIGNAL_SOCKET_PATH.set(socket_cstr);
+    let _ = SIGNAL_STATUS_PATH.set(status_cstr);
+
+    for sig in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
+        // SAFETY: sigaction is the documented POSIX API for installing signal
+        // handlers; we pass a zero-initialized struct, our handler pointer,
+        // and an empty signal mask. Failure returns -1 and sets errno.
+        unsafe {
+            let mut sa: libc::sigaction = std::mem::zeroed();
+            sa.sa_sigaction = handle_termination_signal as *const () as usize;
+            libc::sigemptyset(&mut sa.sa_mask);
+            // Intentionally no SA_RESTART: we want blocking syscalls (accept)
+            // to return EINTR so the loop can exit promptly. The handler
+            // itself calls _exit, so EINTR handling in the loop is academic,
+            // but the principle is right.
+            sa.sa_flags = 0;
+            if libc::sigaction(sig, &sa, std::ptr::null_mut()) != 0 {
+                return Err(std::io::Error::last_os_error())
+                    .with_context(|| format!("failed to install signal handler for signal {sig}"));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn install_daemon_panic_hook(coven_home: &Path, socket_path: &Path, status_path: &Path) {
+    let coven_home = coven_home.to_path_buf();
+    let socket_path = socket_path.to_path_buf();
+    let status_path = status_path.to_path_buf();
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Capture the panic location and payload before any potentially
+        // failing IO so the original message always lands on stderr.
+        prev(info);
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        let payload = format!(
+            "daemon panic: {info}\nbacktrace:\n{backtrace}\n----------------------------------------"
+        );
+        append_daemon_recovery_log(&coven_home, &payload);
+        // Best-effort cleanup; Drop on ShutdownGuard would also run during
+        // unwinding, but a panic from inside Drop or from a thread that does
+        // not own the guard would otherwise leave the files behind.
+        let _ = std::fs::remove_file(&socket_path);
+        let _ = std::fs::remove_file(&status_path);
+    }));
+}
+
+#[cfg(unix)]
 pub fn serve_forever(coven_home: &Path, started_at: String, tcp_addr: Option<&str>) -> Result<()> {
     use std::sync::Arc;
     let status = DaemonStatus {
@@ -1072,6 +1205,24 @@ pub fn serve_forever(coven_home: &Path, started_at: String, tcp_addr: Option<&st
             .into_owned(),
     };
     write_status(coven_home, &status)?;
+    let socket_path = daemon_socket_path(coven_home);
+    let status_path = daemon_status_path(coven_home);
+    // Install the shutdown hooks before anything else that can fail: a panic
+    // during recovery or bind would otherwise leave daemon.json on disk.
+    install_daemon_panic_hook(coven_home, &socket_path, &status_path);
+    install_termination_signal_handlers(&socket_path, &status_path)?;
+    let _shutdown_guard = ShutdownGuard {
+        socket_path: socket_path.clone(),
+        status_path: status_path.clone(),
+    };
+    append_daemon_recovery_log(
+        coven_home,
+        &format!(
+            "daemon starting pid={} socket={}",
+            std::process::id(),
+            socket_path.display()
+        ),
+    );
     recover_orphaned_sessions(coven_home, &started_at)?;
     let unix_listener = bind_api_socket(coven_home)?;
     let runtime = Arc::new(LiveSessionRuntime::with_coven_home(
@@ -1085,8 +1236,8 @@ pub fn serve_forever(coven_home: &Path, started_at: String, tcp_addr: Option<&st
         let tcp_runtime = Arc::clone(&runtime);
         // TCP accept errors are logged and the loop continues — misbehaving
         // network clients should not bring down the daemon. The Unix loop
-        // below treats accept errors as fatal because they indicate local
-        // system trouble.
+        // below uses the same strategy: a single malformed local request must
+        // not orphan the socket file (see #197).
         std::thread::Builder::new()
             .name("coven-tcp-api".into())
             .spawn(move || loop {
@@ -1103,13 +1254,24 @@ pub fn serve_forever(coven_home: &Path, started_at: String, tcp_addr: Option<&st
             .context("failed to spawn TCP API thread")?;
     }
 
+    // Per-connection errors are isolated: a malformed HTTP request from one
+    // client used to bring down the entire daemon (because `?` propagated the
+    // error out of the accept loop and serve_forever returned), leaving the
+    // socket file behind. Now connection errors are logged and the loop
+    // continues, matching the TCP path's policy.
     loop {
-        serve_next_connection(
+        if let Err(error) = serve_next_connection(
             &unix_listener,
             coven_home,
             Some(status.clone()),
             runtime.as_ref(),
-        )?;
+        ) {
+            eprintln!("coven daemon: unix connection error: {error:#}");
+            append_daemon_recovery_log(coven_home, &format!("unix connection error: {error:#}"));
+            // A short pause keeps tight error loops (e.g. a wedged listener)
+            // from spinning the CPU. 100ms matches the TCP path above.
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
     }
 }
 
@@ -2608,6 +2770,152 @@ mod tests {
 
         assert!(response.starts_with("HTTP/1.1 200 OK"), "got: {response}");
         assert!(response.contains("\"apiVersion\""), "got: {response}");
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_guard_removes_socket_and_status_on_drop() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let socket_path = daemon_socket_path(temp_dir.path());
+        let status_path = daemon_status_path(temp_dir.path());
+        std::fs::write(&socket_path, b"")?;
+        std::fs::write(&status_path, b"{}")?;
+        assert!(socket_path.exists());
+        assert!(status_path.exists());
+
+        {
+            let _guard = ShutdownGuard {
+                socket_path: socket_path.clone(),
+                status_path: status_path.clone(),
+            };
+            // Files are still present while the guard is alive.
+            assert!(socket_path.exists());
+            assert!(status_path.exists());
+        }
+
+        // Drop fires when the guard scope ends → both paths must be gone, even
+        // if the daemon process is exiting via a propagated error or a panic.
+        assert!(!socket_path.exists(), "socket file must be removed on Drop");
+        assert!(!status_path.exists(), "status file must be removed on Drop");
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_guard_drop_is_idempotent_when_files_already_missing() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let socket_path = daemon_socket_path(temp_dir.path());
+        let status_path = daemon_status_path(temp_dir.path());
+        // Files do not exist yet. Dropping the guard must not panic — the
+        // daemon may have failed before bind_api_socket succeeded.
+        let _guard = ShutdownGuard {
+            socket_path,
+            status_path,
+        };
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn append_daemon_recovery_log_creates_and_appends() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        append_daemon_recovery_log(temp_dir.path(), "first event");
+        append_daemon_recovery_log(temp_dir.path(), "second event");
+        let log = std::fs::read_to_string(daemon_recovery_log_path(temp_dir.path()))?;
+        assert!(
+            log.contains("first event"),
+            "log should record the first event, got: {log}"
+        );
+        assert!(
+            log.contains("second event"),
+            "second append should not overwrite the first, got: {log}"
+        );
+        Ok(())
+    }
+
+    /// Regression test for OpenCoven/coven#197: a single malformed local
+    /// request used to bring down the daemon because `serve_forever` used `?`
+    /// on `serve_next_connection`, propagating per-connection errors all the
+    /// way out and leaving the socket file orphaned. The fix turns the loop
+    /// into log-and-continue. This test pins that contract by feeding the
+    /// loop body a deliberately invalid request followed by a valid one and
+    /// asserting both that the socket stays bound and the second request
+    /// gets a real response.
+    #[cfg(unix)]
+    #[test]
+    fn unix_serve_loop_isolates_per_connection_errors() -> Result<()> {
+        use std::io::{Read, Write};
+        use std::net::Shutdown;
+        use std::os::unix::net::UnixStream;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::thread;
+
+        let temp_dir = tempfile::tempdir()?;
+        let listener = bind_api_socket(temp_dir.path())?;
+        // Use a short accept timeout so the loop can poll the stop flag — we
+        // don't want this test to hang the suite if the loop never exits.
+        listener.set_nonblocking(false)?;
+        let home = temp_dir.path().to_path_buf();
+        let status = DaemonStatus {
+            pid: std::process::id(),
+            started_at: "2026-06-08T00:00:00Z".to_string(),
+            socket: daemon_socket_path(temp_dir.path())
+                .to_string_lossy()
+                .into_owned(),
+        };
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_thread = Arc::clone(&stop);
+
+        let server = thread::spawn(move || {
+            let runtime = LiveSessionRuntime::default();
+            // Mirror the post-fix serve_forever loop body exactly: per-
+            // connection errors must NOT exit the loop. A wakeup connection
+            // from the test harness at the end unblocks the final accept().
+            while !stop_thread.load(Ordering::SeqCst) {
+                match serve_next_connection(&listener, &home, Some(status.clone()), &runtime) {
+                    Ok(()) => {}
+                    Err(error) => {
+                        // This is the post-fix behavior. Pre-fix code would
+                        // `?` here and exit the thread.
+                        let _ = error;
+                    }
+                }
+            }
+        });
+
+        // First, send a deliberately malformed request. The handler bails on
+        // "empty API request" / parse errors; pre-fix this killed the daemon.
+        let mut bad = UnixStream::connect(daemon_socket_path(temp_dir.path()))?;
+        bad.write_all(b"not http\r\n\r\n")?;
+        bad.shutdown(Shutdown::Write)?;
+        let mut bad_response = String::new();
+        let _ = bad.read_to_string(&mut bad_response);
+
+        // Now send a well-formed health probe. If the loop swallowed the
+        // earlier error correctly, this must succeed and the socket file must
+        // still exist on disk.
+        let mut good = UnixStream::connect(daemon_socket_path(temp_dir.path()))?;
+        good.write_all(b"GET /health HTTP/1.1\r\nHost: coven\r\n\r\n")?;
+        good.shutdown(Shutdown::Write)?;
+        let mut good_response = String::new();
+        good.read_to_string(&mut good_response)?;
+
+        stop.store(true, Ordering::SeqCst);
+        // Trigger one more accept so the loop wakes and observes the stop
+        // flag, then joins cleanly. The unsolicited probe response is
+        // ignored.
+        let _ = UnixStream::connect(daemon_socket_path(temp_dir.path()));
+        server.join().expect("server thread should not panic");
+
+        assert!(
+            good_response.starts_with("HTTP/1.1 200 OK"),
+            "daemon must still respond to a valid request after a malformed one; got: {good_response}"
+        );
+        assert!(
+            daemon_socket_path(temp_dir.path()).exists(),
+            "socket file should still exist while the loop is running"
+        );
         Ok(())
     }
 }
