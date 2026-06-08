@@ -28,3 +28,4 @@ __pycache__/
 
 # Git worktrees (project-local)
 .worktrees/
+/.fastembed_cache
