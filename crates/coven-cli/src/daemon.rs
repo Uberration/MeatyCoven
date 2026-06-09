@@ -190,7 +190,35 @@ impl SessionRuntime for LiveSessionRuntime {
                 );
             }
             let piped = pty_runner::spawn_piped_with_observer(&command, observer)?;
-            let mut killer_box: Box<dyn RuntimeKiller> = Box::new(PipedKiller { pid: piped.pid });
+            #[cfg(windows)]
+            let job_handle = {
+                use windows_sys::Win32::{
+                    Foundation::INVALID_HANDLE_VALUE,
+                    System::{
+                        JobObjects::{AssignProcessToJobObject, CreateJobObjectW},
+                        Threading::{OpenProcess, PROCESS_ALL_ACCESS},
+                    },
+                };
+                // SAFETY: Windows API calls; handles are owned by PipedKiller.
+                unsafe {
+                    let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                    if job != INVALID_HANDLE_VALUE && job != 0 as _ {
+                        let ph = OpenProcess(PROCESS_ALL_ACCESS, 0, piped.pid);
+                        if ph != INVALID_HANDLE_VALUE && ph != 0 as _ {
+                            AssignProcessToJobObject(job, ph);
+                            windows_sys::Win32::Foundation::CloseHandle(ph);
+                        }
+                        Some(job)
+                    } else {
+                        None
+                    }
+                }
+            };
+            let mut killer_box: Box<dyn RuntimeKiller> = Box::new(PipedKiller {
+                pid: piped.pid,
+                #[cfg(windows)]
+                job_handle,
+            });
             let mut input = piped.input;
             // Send the launch's prompt as the first stream-json user
             // message so the chat doesn't need a separate send call right
@@ -335,6 +363,20 @@ fn write_stream_message(input: &mut dyn Write, text: &str) -> Result<()> {
 /// harness that ignores it linger past the user's request.
 struct PipedKiller {
     pid: u32,
+    /// On Windows, a Job Object handle that owns the child process tree.
+    /// Calling TerminateJobObject on it kills the child and all descendants.
+    #[cfg(windows)]
+    job_handle: Option<windows_sys::Win32::Foundation::HANDLE>,
+}
+
+#[cfg(windows)]
+impl Drop for PipedKiller {
+    fn drop(&mut self) {
+        if let Some(h) = self.job_handle.take() {
+            // SAFETY: h is a valid handle owned by this struct.
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(h) };
+        }
+    }
 }
 
 impl RuntimeKiller for PipedKiller {
@@ -357,7 +399,42 @@ impl RuntimeKiller for PipedKiller {
         Ok(())
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    fn kill(&mut self) -> Result<()> {
+        use windows_sys::Win32::{
+            Foundation::INVALID_HANDLE_VALUE,
+            System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE},
+        };
+        // Prefer Job Object kill (terminates the whole child tree).
+        if let Some(h) = self.job_handle.take() {
+            // SAFETY: h is a valid job handle; exit code 1 is conventional.
+            let rc = unsafe { windows_sys::Win32::System::JobObjects::TerminateJobObject(h, 1) };
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(h) };
+            if rc == 0 {
+                // Fall back to direct TerminateProcess on the root pid.
+                unsafe {
+                    let ph = OpenProcess(PROCESS_TERMINATE, 0, self.pid);
+                    if ph != INVALID_HANDLE_VALUE && ph != 0 as _ {
+                        TerminateProcess(ph, 1);
+                        windows_sys::Win32::Foundation::CloseHandle(ph);
+                    }
+                }
+            }
+            return Ok(());
+        }
+        // No job object — fall back to TerminateProcess on the root pid.
+        unsafe {
+            let ph = OpenProcess(PROCESS_TERMINATE, 0, self.pid);
+            if ph == INVALID_HANDLE_VALUE || ph == 0 as _ {
+                return Ok(()); // Already gone.
+            }
+            TerminateProcess(ph, 1);
+            windows_sys::Win32::Foundation::CloseHandle(ph);
+        }
+        Ok(())
+    }
+
+    #[cfg(not(any(unix, windows)))]
     fn kill(&mut self) -> Result<()> {
         anyhow::bail!(
             "stream-mode harness kill not implemented on this platform (pid {})",
@@ -1042,6 +1119,17 @@ pub const TCP_IO_TIMEOUT: Duration = Duration::from_secs(30);
 #[cfg(unix)]
 pub const MAX_TCP_BODY_BYTES: usize = 1024 * 1024;
 
+/// Body cap for Unix socket and Windows named pipe transports.
+/// These transports are local-only, so the risk is lower than TCP, but a
+/// runaway or hostile local process should not be able to allocate unbounded
+/// memory. 4 MiB is generous for any legitimate request payload.
+pub const MAX_SOCKET_BODY_BYTES: usize = 4 * 1024 * 1024;
+
+/// I/O timeout for Unix socket and Windows named pipe connections.
+/// Prevents a stalled or slow-writing client from holding a handler thread
+/// indefinitely.
+pub const SOCKET_IO_TIMEOUT: Duration = Duration::from_secs(60);
+
 #[cfg(unix)]
 fn ensure_loopback_addrs(addrs: &[SocketAddr]) -> Result<()> {
     if addrs.is_empty() {
@@ -1507,10 +1595,25 @@ pub fn serve_next_connection(
     let (stream, _) = listener
         .accept()
         .context("failed to accept API connection")?;
+    // Apply I/O timeout so a stalled client doesn't hold the handler thread forever.
+    stream
+        .set_read_timeout(Some(SOCKET_IO_TIMEOUT))
+        .context("failed to set read timeout on Unix socket")?;
+    stream
+        .set_write_timeout(Some(SOCKET_IO_TIMEOUT))
+        .context("failed to set write timeout on Unix socket")?;
     let read = stream.try_clone().context("failed to clone Unix stream")?;
-    // Unix socket has no body cap — only local processes can reach it and the
-    // socket permission bits already gate access.
-    handle_http_stream(read, stream, coven_home, status, runtime, None, false)
+    // Apply a body cap even on local Unix sockets: a buggy or hostile local
+    // process should not be able to OOM the daemon with a huge payload.
+    handle_http_stream(
+        read,
+        stream,
+        coven_home,
+        status,
+        runtime,
+        Some(MAX_SOCKET_BODY_BYTES),
+        false,
+    )
 }
 
 fn http_reason_phrase(status: u16) -> &'static str {
@@ -1735,6 +1838,9 @@ pub fn serve_forever(coven_home: &Path, started_at: String, tcp_addr: Option<&st
                 continue;
             }
         };
+        // Apply I/O timeouts to prevent stalled clients from blocking the handler.
+        let _ = stream.set_recv_timeout(Some(SOCKET_IO_TIMEOUT));
+        let _ = stream.set_send_timeout(Some(SOCKET_IO_TIMEOUT));
         // Stream implements Read + Write via shared reference on Windows.
         // The handler reads the full request before writing, so sharing &stream is safe.
         if let Err(error) = handle_http_stream(
@@ -1743,7 +1849,7 @@ pub fn serve_forever(coven_home: &Path, started_at: String, tcp_addr: Option<&st
             coven_home,
             Some(status.clone()),
             runtime.as_ref(),
-            None,
+            Some(MAX_SOCKET_BODY_BYTES),
             false,
         ) {
             eprintln!("coven daemon: pipe connection error: {error:#}");
