@@ -117,7 +117,7 @@ pub fn stream_claude<W: Write>(
     out: &mut W,
 ) -> Result<i32> {
     stream_claude_with_program(
-        "claude",
+        &crate::harness::spawn_executable_for_platform("claude"),
         cwd,
         session_id,
         is_resume,

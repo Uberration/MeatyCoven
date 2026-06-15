@@ -461,6 +461,7 @@ pub fn command_parts_for_harness_with_conversation(
         .into_iter()
         .find(|spec| spec.id == harness_id)
         .ok_or_else(|| anyhow!("unsupported harness `{harness_id}`"))?;
+    let program = spawn_executable_for_platform(&spec.executable);
 
     // Resolve effective prompt: inject familiar identity preamble when present.
     // Harnesses with a dedicated --system-prompt flag get identity there instead,
@@ -484,13 +485,13 @@ pub fn command_parts_for_harness_with_conversation(
                 args.insert(0, flag.to_string());
             }
             return Ok((
-                spec.executable.clone(),
+                program,
                 with_claude_permission_flags(harness_id, sanitize_argv_for_platform(args)),
             ));
         }
         // Harness doesn't support stream: fall through to non-interactive.
         return Ok((
-            spec.executable.clone(),
+            program,
             with_claude_permission_flags(
                 harness_id,
                 sanitize_argv_for_platform(
@@ -508,7 +509,7 @@ pub fn command_parts_for_harness_with_conversation(
                 args.insert(0, flag.to_string());
             }
             return Ok((
-                spec.executable.clone(),
+                program,
                 with_claude_permission_flags(
                     harness_id,
                     args.into_iter()
@@ -527,7 +528,7 @@ pub fn command_parts_for_harness_with_conversation(
         args.insert(0, flag.to_string());
     }
     Ok((
-        spec.executable,
+        program,
         with_claude_permission_flags(harness_id, sanitize_argv_for_platform(args)),
     ))
 }
@@ -648,6 +649,25 @@ fn executable_exists(executable: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(windows)]
+pub(crate) fn spawn_executable_for_platform(executable: &str) -> String {
+    env::var_os("PATH")
+        .and_then(|paths| {
+            resolve_executable_in_paths_for_windows(
+                executable,
+                env::split_paths(&paths),
+                pathext_extensions(),
+            )
+        })
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| executable.to_string())
+}
+
+#[cfg(not(windows))]
+pub(crate) fn spawn_executable_for_platform(executable: &str) -> String {
+    executable.to_string()
+}
+
 fn executable_exists_in_paths<I>(executable: &str, paths: I) -> bool
 where
     I: IntoIterator<Item = PathBuf>,
@@ -659,6 +679,26 @@ where
     paths.into_iter().any(|path| {
         executable_candidates(&path, executable)
             .any(|candidate| candidate_is_executable(&candidate))
+    })
+}
+
+#[cfg(any(windows, test))]
+fn resolve_executable_in_paths_for_windows<I>(
+    executable: &str,
+    paths: I,
+    extensions: Vec<String>,
+) -> Option<PathBuf>
+where
+    I: IntoIterator<Item = PathBuf>,
+{
+    if executable.contains('/') || executable.contains('\\') {
+        return None;
+    }
+
+    paths.into_iter().find_map(|path| {
+        windows_executable_candidates(&path, executable, extensions.clone())
+            .into_iter()
+            .find(|candidate| candidate.is_file())
     })
 }
 
@@ -681,23 +721,42 @@ fn executable_candidates<'a>(
     path: &'a Path,
     executable: &'a str,
 ) -> impl Iterator<Item = PathBuf> + 'a {
-    let extensions = env::var_os("PATHEXT")
+    windows_executable_candidates(path, executable, pathext_extensions()).into_iter()
+}
+
+#[cfg(windows)]
+fn pathext_extensions() -> Vec<String> {
+    env::var_os("PATHEXT")
         .map(|value| {
             env::split_paths(&value)
                 .map(|path| path.to_string_lossy().into_owned())
                 .collect::<Vec<_>>()
         })
-        .unwrap_or_else(|| vec![".COM".into(), ".EXE".into(), ".BAT".into(), ".CMD".into()]);
+        .unwrap_or_else(|| vec![".COM".into(), ".EXE".into(), ".BAT".into(), ".CMD".into()])
+}
 
+#[cfg(any(windows, test))]
+fn windows_executable_candidates(
+    path: &Path,
+    executable: &str,
+    extensions: Vec<String>,
+) -> Vec<PathBuf> {
     let base = path.join(executable);
     let has_extension = Path::new(executable).extension().is_some();
-    std::iter::once(base.clone()).chain(extensions.into_iter().filter_map(move |extension| {
-        if has_extension {
-            None
-        } else {
-            Some(path.join(format!("{executable}{extension}")))
-        }
-    }))
+    if has_extension {
+        return vec![base];
+    }
+    extensions
+        .into_iter()
+        .map(move |extension| {
+            let normalized = if extension.starts_with('.') {
+                extension
+            } else {
+                format!(".{extension}")
+            };
+            path.join(format!("{executable}{normalized}"))
+        })
+        .collect()
 }
 
 #[cfg(not(windows))]
@@ -817,6 +876,24 @@ mod tests {
             temp_dir.path().join("codex").to_string_lossy().as_ref(),
             vec![temp_dir.path().to_path_buf()]
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn windows_spawn_resolution_prefers_cmd_shim_over_extensionless_npm_shim() -> anyhow::Result<()>
+    {
+        let temp_dir = tempfile::tempdir()?;
+        fs::write(temp_dir.path().join("codex"), "#!/bin/sh\n")?;
+        fs::write(temp_dir.path().join("codex.cmd"), "@echo off\r\n")?;
+
+        let resolved = resolve_executable_in_paths_for_windows(
+            "codex",
+            vec![temp_dir.path().to_path_buf()],
+            vec![".cmd".to_string(), ".exe".to_string()],
+        )
+        .expect("codex.cmd should be selected");
+
+        assert_eq!(resolved, temp_dir.path().join("codex.cmd"));
         Ok(())
     }
 
