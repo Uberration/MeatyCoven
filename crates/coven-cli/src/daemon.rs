@@ -1952,7 +1952,6 @@ fn parse_request_line(line: &str) -> Result<(&str, &str)> {
 /// # Safety
 /// Caller must ensure `handle` is a valid open pipe handle.
 #[cfg(windows)]
-#[allow(dead_code)]
 unsafe fn restrict_pipe_to_owner(handle: windows_sys::Win32::Foundation::HANDLE) -> Result<()> {
     use windows_sys::Win32::{
         Foundation::LocalFree,
@@ -1961,41 +1960,62 @@ unsafe fn restrict_pipe_to_owner(handle: windows_sys::Win32::Foundation::HANDLE)
                 ConvertStringSecurityDescriptorToSecurityDescriptorW, SetSecurityInfo,
                 SE_KERNEL_OBJECT,
             },
-            DACL_SECURITY_INFORMATION,
+            GetSecurityDescriptorDacl, DACL_SECURITY_INFORMATION,
         },
     };
 
+    struct LocalSecurityDescriptor(*mut std::ffi::c_void);
+
+    impl Drop for LocalSecurityDescriptor {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                // SAFETY: ConvertStringSecurityDescriptorToSecurityDescriptorW allocates the
+                // descriptor with LocalAlloc; LocalFree is the required deallocator.
+                unsafe { LocalFree(self.0 as _) };
+            }
+        }
+    }
+
     // D:(A;;GA;;;OW) — Allow Generic All for the object Owner.
     let sddl = windows_sys::w!("D:(A;;GA;;;OW)");
-    let mut sd: *mut std::ffi::c_void = std::ptr::null_mut();
+    let mut raw_sd: *mut std::ffi::c_void = std::ptr::null_mut();
     let mut sd_len: u32 = 0;
-    if ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, &mut sd, &mut sd_len) == 0 {
+    if ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, &mut raw_sd, &mut sd_len) == 0
+    {
         anyhow::bail!(
             "failed to build owner-only security descriptor: {}",
             std::io::Error::last_os_error()
         );
     }
-    // SAFETY: sd is a valid LocalAlloc'd security descriptor.
-    let acl = {
-        use windows_sys::Win32::Security::GetSecurityDescriptorDacl;
-        let mut present = 0i32;
-        let mut acl_ptr = std::ptr::null_mut();
-        let mut defaulted = 0i32;
-        GetSecurityDescriptorDacl(sd, &mut present, &mut acl_ptr, &mut defaulted);
-        acl_ptr
-    };
+    let sd = LocalSecurityDescriptor(raw_sd);
+
+    let mut present = 0i32;
+    let mut acl_ptr = std::ptr::null_mut();
+    let mut defaulted = 0i32;
+    if GetSecurityDescriptorDacl(sd.0, &mut present, &mut acl_ptr, &mut defaulted) == 0 {
+        anyhow::bail!(
+            "failed to extract owner-only named pipe DACL: {}",
+            std::io::Error::last_os_error()
+        );
+    }
+    if present == 0 || acl_ptr.is_null() {
+        anyhow::bail!("owner-only named pipe DACL was not present in security descriptor");
+    }
+
     let rc = SetSecurityInfo(
         handle,
         SE_KERNEL_OBJECT,
         DACL_SECURITY_INFORMATION,
         std::ptr::null_mut(),
         std::ptr::null_mut(),
-        acl,
+        acl_ptr,
         std::ptr::null_mut(),
     );
-    LocalFree(sd as _);
     if rc != 0 {
-        anyhow::bail!("SetSecurityInfo failed on named pipe: error {rc}");
+        anyhow::bail!(
+            "SetSecurityInfo failed on named pipe: {}",
+            std::io::Error::from_raw_os_error(rc as i32)
+        );
     }
     Ok(())
 }
@@ -2031,51 +2051,21 @@ pub fn serve_forever(coven_home: &Path, started_at: String, tcp_addr: Option<&st
         .create_sync()
         .context("failed to bind Windows named pipe")?;
 
-    // Restrict the pipe to owner-only access immediately after creation.
-    // Uses SetNamedSecurityInfoW on the pipe object path.
-    #[cfg(windows)]
-    {
-        use std::ffi::OsStr;
-        use std::os::windows::ffi::OsStrExt;
-        use windows_sys::Win32::{
-            Foundation::LocalFree,
-            Security::{
-                Authorization::{
-                    ConvertStringSecurityDescriptorToSecurityDescriptorW, SetNamedSecurityInfoW,
-                    SE_KERNEL_OBJECT,
-                },
-                GetSecurityDescriptorDacl, DACL_SECURITY_INFORMATION,
-            },
-        };
-        let pipe_path = format!("\\\\\\.\\\\pipe\\\\",) + &windows_pipe_name(coven_home);
-        let pipe_path_w: Vec<u16> = OsStr::new(&pipe_path)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
-        let sddl = windows_sys::w!("D:(A;;GA;;;OW)");
-        let mut sd: *mut std::ffi::c_void = std::ptr::null_mut();
-        let mut sd_len: u32 = 0;
-        if unsafe {
-            ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, 1, &mut sd, &mut sd_len)
-        } != 0
-        {
-            let mut present = 0i32;
-            let mut acl_ptr = std::ptr::null_mut();
-            let mut defaulted = 0i32;
-            unsafe { GetSecurityDescriptorDacl(sd, &mut present, &mut acl_ptr, &mut defaulted) };
-            unsafe {
-                SetNamedSecurityInfoW(
-                    pipe_path_w.as_ptr() as *mut _,
-                    SE_KERNEL_OBJECT,
-                    DACL_SECURITY_INFORMATION,
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                    acl_ptr,
-                    std::ptr::null_mut(),
-                )
-            };
-            unsafe { LocalFree(sd as _) };
+    // Restrict the pipe to owner-only access immediately after creation. If hardening
+    // fails, return an error instead of serving the unauthenticated daemon API on a
+    // pipe that still has Windows' default security descriptor.
+    use std::os::windows::io::AsRawHandle;
+    let raw_handle = match &listener {
+        interprocess::local_socket::Listener::NamedPipe(named_pipe) => {
+            named_pipe.as_ref().as_raw_handle()
         }
+    };
+    let hardening_result =
+        unsafe { restrict_pipe_to_owner(raw_handle as windows_sys::Win32::Foundation::HANDLE) }
+            .context("failed to restrict Windows named pipe to the current owner");
+    if let Err(error) = hardening_result {
+        let _ = clear_status(coven_home);
+        return Err(error);
     }
 
     let runtime = Arc::new(LiveSessionRuntime::with_coven_home(
