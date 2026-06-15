@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 pub const EXTERNAL_ADAPTER_MANIFEST_ENV: &str = "COVEN_HARNESS_ADAPTER_MANIFEST";
 pub const EXTERNAL_ADAPTER_DIRS_ENV: &str = "COVEN_HARNESS_ADAPTER_DIRS";
+pub const CLAUDE_BYPASS_PERMISSIONS_ENV: &str = "COVEN_CLAUDE_BYPASS_PERMISSIONS";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HarnessSummary {
@@ -418,14 +419,35 @@ pub fn command_parts_for_harness(
 }
 
 /// Claude Code prompts before running tool calls that aren't pre-allowlisted.
-/// Cave launches claude sessions in a PTY with no human attached, so such a
-/// prompt stalls the session until a watchdog fails it (observed: an SSO
-/// review task hung ~5 min on a `gh pr view` permission prompt, then exited
-/// 1). Force `bypassPermissions` on every claude launch — interactive,
-/// non-interactive, and stream — so unattended sessions never block. The flag
-/// is order-independent among claude's other flags, so we prepend it.
+/// Preserve those prompts by default so untrusted prompt text cannot silently
+/// drive tool execution. Operators that run Claude in an explicitly trusted,
+/// unattended environment may opt in to bypassing prompts with
+/// `COVEN_CLAUDE_BYPASS_PERMISSIONS=1`.
+pub fn claude_permission_bypass_enabled() -> bool {
+    claude_permission_bypass_enabled_from_value(
+        env::var(CLAUDE_BYPASS_PERMISSIONS_ENV).ok().as_deref(),
+    )
+}
+
 fn with_claude_permission_flags(harness_id: &str, args: Vec<String>) -> Vec<String> {
-    if harness_id != "claude" {
+    with_claude_permission_flags_enabled(harness_id, args, claude_permission_bypass_enabled())
+}
+
+fn claude_permission_bypass_enabled_from_value(value: Option<&str>) -> bool {
+    value
+        .map(|value| {
+            let value = value.trim();
+            value == "1" || value.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+}
+
+fn with_claude_permission_flags_enabled(
+    harness_id: &str,
+    args: Vec<String>,
+    bypass_enabled: bool,
+) -> Vec<String> {
+    if harness_id != "claude" || !bypass_enabled {
         return args;
     }
     let mut flagged = Vec::with_capacity(args.len() + 2);
@@ -828,14 +850,7 @@ mod tests {
         );
         assert_eq!(
             command_parts_for_harness("claude", "polish ui", HarnessLaunchMode::Interactive)?,
-            (
-                "claude".to_string(),
-                vec![
-                    "--permission-mode".to_string(),
-                    "bypassPermissions".to_string(),
-                    "polish ui".to_string(),
-                ]
-            )
+            ("claude".to_string(), vec!["polish ui".to_string()])
         );
         Ok(())
     }
@@ -859,12 +874,7 @@ mod tests {
             command_parts_for_harness("claude", "polish ui", HarnessLaunchMode::NonInteractive)?,
             (
                 "claude".to_string(),
-                vec![
-                    "--permission-mode".to_string(),
-                    "bypassPermissions".to_string(),
-                    "--print".to_string(),
-                    "polish ui".to_string(),
-                ]
+                vec!["--print".to_string(), "polish ui".to_string()]
             )
         );
         Ok(())
@@ -1068,8 +1078,6 @@ mod tests {
             (
                 "claude".to_string(),
                 vec![
-                    "--permission-mode".to_string(),
-                    "bypassPermissions".to_string(),
                     "--print".to_string(),
                     "--session-id".to_string(),
                     "abc-123".to_string(),
@@ -1097,8 +1105,6 @@ mod tests {
             (
                 "claude".to_string(),
                 vec![
-                    "--permission-mode".to_string(),
-                    "bypassPermissions".to_string(),
                     "--print".to_string(),
                     "--resume".to_string(),
                     "abc-123".to_string(),
@@ -1123,14 +1129,7 @@ mod tests {
         );
         assert_eq!(
             parts.unwrap(),
-            (
-                "claude".to_string(),
-                vec![
-                    "--permission-mode".to_string(),
-                    "bypassPermissions".to_string(),
-                    "hello".to_string(),
-                ]
-            )
+            ("claude".to_string(), vec!["hello".to_string()])
         );
         Ok(())
     }
@@ -1195,7 +1194,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_stream_mode_bypasses_permission_prompts() -> anyhow::Result<()> {
+    fn claude_stream_mode_preserves_permission_prompts_by_default() -> anyhow::Result<()> {
         let (program, args) = command_parts_for_harness_with_conversation(
             "claude",
             "hello",
@@ -1204,10 +1203,34 @@ mod tests {
             None,
         )?;
         assert_eq!(program, "claude");
-        // The bypass flag is prepended ahead of stream-mode's own flags.
-        assert_eq!(&args[..2], &["--permission-mode", "bypassPermissions"]);
+        assert!(!args
+            .iter()
+            .any(|a| a == "--permission-mode" || a == "bypassPermissions"));
         assert!(args.iter().any(|a| a == "--output-format"));
         Ok(())
+    }
+
+    #[test]
+    fn claude_permission_bypass_requires_explicit_opt_in_values() {
+        assert!(claude_permission_bypass_enabled_from_value(Some("1")));
+        assert!(claude_permission_bypass_enabled_from_value(Some("true")));
+        assert!(claude_permission_bypass_enabled_from_value(Some(" TRUE ")));
+        assert!(!claude_permission_bypass_enabled_from_value(None));
+        assert!(!claude_permission_bypass_enabled_from_value(Some("0")));
+        assert!(!claude_permission_bypass_enabled_from_value(Some("false")));
+    }
+
+    #[test]
+    fn claude_permission_bypass_opt_in_adds_flags() {
+        let args = with_claude_permission_flags_enabled("claude", vec!["hello".to_string()], true);
+        assert_eq!(
+            args,
+            vec![
+                "--permission-mode".to_string(),
+                "bypassPermissions".to_string(),
+                "hello".to_string()
+            ]
+        );
     }
 
     #[test]
