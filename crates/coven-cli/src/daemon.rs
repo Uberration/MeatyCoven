@@ -860,6 +860,7 @@ fn acquire_daemon_lifecycle_lock(coven_home: &Path) -> Result<DaemonLifecycleLoc
     let lock_path = daemon_lifecycle_lock_path(coven_home);
     let file = std::fs::OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .open(&lock_path)
