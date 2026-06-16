@@ -124,5 +124,8 @@ fn chunk_text(text: &str) -> Vec<(usize, String)> {
 fn hex_hash(s: &str) -> String {
     let mut h = Sha256::new();
     h.update(s.as_bytes());
-    format!("{:x}", h.finalize())
+    // sha2 0.11's `finalize()` returns a `hybrid_array::Array`, which no longer
+    // implements `LowerHex`; hex-encode the bytes directly. Output is identical
+    // lowercase hex, so existing chunk hashes stay stable.
+    h.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
