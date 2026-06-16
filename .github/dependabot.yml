@@ -25,6 +25,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # @opencoven/cli-* are self-referenced platform binaries pinned to the
+      # 0.0.0 placeholder that the release flow rewrites at publish time. They
+      # must never be bumped by Dependabot.
+      - dependency-name: "@opencoven/*"
   - package-ecosystem: github-actions
     directory: /
     schedule:
