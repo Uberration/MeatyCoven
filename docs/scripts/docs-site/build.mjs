@@ -11,7 +11,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import matter from 'gray-matter';
+import matter from './frontmatter.mjs';
 import MarkdownIt from 'markdown-it';
 import anchor from 'markdown-it-anchor';
 

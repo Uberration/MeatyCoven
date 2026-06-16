@@ -8,7 +8,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import matter from 'gray-matter';
+import matter from './frontmatter.mjs';
 
 const rootDir = process.cwd();
 const config = JSON.parse(fs.readFileSync(path.join(rootDir, 'docs.json'), 'utf8'));
