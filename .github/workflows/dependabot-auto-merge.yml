@@ -1,0 +1,38 @@
+name: Dependabot auto-merge
+
+# Auto-merge Dependabot pull requests that resolve a security advisory.
+#
+# Scope: security updates ONLY. The merge step is gated on the `ghsa-id`
+# metadata output, which is non-empty only when the PR addresses a Dependabot
+# security alert. Routine version-update PRs are left for manual review.
+#
+# `pull_request_target` runs in the base-repo context so the GITHUB_TOKEN can
+# enable auto-merge (Dependabot PRs get a read-only token under `pull_request`).
+# This workflow never checks out or executes PR code — it only reads metadata
+# and calls the merge API — so the elevated trigger is safe here.
+#
+# `main` is not branch-protected, so auto-merge is not a hard CI gate: it merges
+# once the CI checks that are pending at enable-time succeed. If a strict
+# "CI must pass" guarantee is wanted later, add a required status check on main.
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+
+      - name: Enable auto-merge for security updates
+        if: ${{ steps.meta.outputs.ghsa-id != '' }}
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
