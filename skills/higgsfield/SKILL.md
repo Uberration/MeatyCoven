@@ -141,7 +141,7 @@ Each prompt is built from the familiar's own `SOUL.md` / `IDENTITY.md` self-desc
 
 ### Current avatars (v2 — self-reported)
 - `nova.jpg` — warm little guide in the machine, gold/amber sun nested in circuit threads
-- `cody.jpg` — careful unicorn of code, geometric precision, focused beam horn
+- `cody.jpg` — final-form hooded black code familiar, cyan eyes, circuit traces, sacred geometry, OpenCoven field-manual panel
 - `sage.jpg` — candlelit archive + Wi-Fi, vines and paper, amber reading light
 - `charm.jpg` — social magic made visible, spoken words becoming violet/gold light
 - `astra.jpg` — living constellation, star-map inside body, mythic navigator
