@@ -102,17 +102,9 @@ The Rust daemon is the authority boundary. All clients — including the CLI its
 
 Coven is available as an npm wrapper for the fastest install, or you can build from source.
 
-### npm (recommended for users)
+### npm (recommended)
 
-Verify your setup instantly with `npx` — no install required:
-
-```bash
-npx @opencoven/cli doctor
-# or with pnpm:
-pnpm dlx @opencoven/cli doctor
-```
-
-To use `coven` as a persistent command, install globally:
+Install globally:
 
 ```bash
 npm install -g @opencoven/cli
@@ -653,7 +645,7 @@ coven doctor
 
 | Symptom                                     | First step                                                                             |
 | ------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `coven: command not found`                  | Use `npx @opencoven/cli` or build from source; verify binary is on `PATH`              |
+| `coven: command not found`                  | Run `npm install -g @opencoven/cli`; verify binary is on `PATH`                        |
 | `doctor` reports missing harness            | Install and authenticate the harness CLI (see [Requirements](#requirements))           |
 | Daemon won't start                          | Run `coven daemon restart`; check `$COVEN_HOME` ownership and permissions              |
 | Session browser shows a table, not a UI     | Terminal isn't interactive; use `coven sessions --manage` to force the browser         |

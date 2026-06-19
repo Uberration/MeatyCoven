@@ -8,13 +8,7 @@ description: "Install Coven on Windows: how to set up the wrapper, native daemon
 
 # Windows install
 
-Use the published npm wrapper from PowerShell, Windows Terminal, or another terminal that can run Node.js packages:
-
-```powershell
-npx @opencoven/cli doctor
-```
-
-For repeated use, install the wrapper globally:
+Install the wrapper globally from PowerShell, Windows Terminal, or any terminal that can run Node.js packages:
 
 ```powershell
 npm install -g @opencoven/cli
