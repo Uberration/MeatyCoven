@@ -1015,6 +1015,10 @@ trait DaemonStopController {
     fn pid_is_alive(&self, pid: u32) -> bool;
     fn wait_for_exit(&self, pid: u32, timeout: Duration) -> bool;
     fn status_matches_running_daemon(&self, status: &DaemonStatus) -> bool;
+    fn status_from_default_socket(&self, coven_home: &Path) -> Result<Option<DaemonStatus>> {
+        let _ = coven_home;
+        Ok(None)
+    }
 }
 
 struct SystemDaemonStopController;
@@ -1188,6 +1192,10 @@ impl DaemonStopController for SystemDaemonStopController {
             true
         }
     }
+
+    fn status_from_default_socket(&self, coven_home: &Path) -> Result<Option<DaemonStatus>> {
+        daemon_status_from_default_socket(coven_home)
+    }
 }
 
 fn stop_background_server_with_controller(
@@ -1244,7 +1252,7 @@ fn background_server_status_with_controller(
         Err(error) => return Err(error),
     };
     let Some(status) = status else {
-        return Ok(None);
+        return recover_missing_status_from_default_socket(coven_home, controller);
     };
 
     if controller.status_matches_running_daemon(&status) {
@@ -1256,6 +1264,26 @@ fn background_server_status_with_controller(
     }
 
     clear_status_and_socket(coven_home)?;
+    Ok(None)
+}
+
+fn recover_missing_status_from_default_socket(
+    coven_home: &Path,
+    controller: &dyn DaemonStopController,
+) -> Result<Option<DaemonStatusState>> {
+    let Some(status) = controller.status_from_default_socket(coven_home)? else {
+        return Ok(None);
+    };
+
+    if controller.status_matches_running_daemon(&status) {
+        write_status(coven_home, &status)?;
+        return Ok(Some(DaemonStatusState::Running(status)));
+    }
+
+    if controller.pid_is_alive(status.pid) {
+        return Ok(Some(DaemonStatusState::Stale(status)));
+    }
+
     Ok(None)
 }
 
@@ -1323,7 +1351,12 @@ fn daemon_status_from_default_socket(coven_home: &Path) -> Result<Option<DaemonS
     daemon_status_from_health_socket(&daemon_socket_path(coven_home).to_string_lossy())
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn daemon_status_from_default_socket(coven_home: &Path) -> Result<Option<DaemonStatus>> {
+    daemon_status_from_windows_pipe(&daemon_windows_pipe_name(coven_home))
+}
+
+#[cfg(not(any(unix, windows)))]
 fn daemon_status_from_default_socket(coven_home: &Path) -> Result<Option<DaemonStatus>> {
     let _ = coven_home;
     Ok(None)
@@ -1331,6 +1364,13 @@ fn daemon_status_from_default_socket(coven_home: &Path) -> Result<Option<DaemonS
 
 #[cfg(windows)]
 fn daemon_health_reports_pid_windows(pipe_name: &str, expected_pid: u32) -> Result<bool> {
+    Ok(daemon_status_from_windows_pipe(pipe_name)?
+        .map(|status| status.pid == expected_pid)
+        .unwrap_or(false))
+}
+
+#[cfg(windows)]
+fn daemon_status_from_windows_pipe(pipe_name: &str) -> Result<Option<DaemonStatus>> {
     use interprocess::local_socket::{prelude::*, GenericNamespaced, Stream};
     use std::io::{Read, Write};
 
@@ -1339,24 +1379,27 @@ fn daemon_health_reports_pid_windows(pipe_name: &str, expected_pid: u32) -> Resu
         .context("failed to parse pipe name for health check")?;
     let mut stream = match Stream::connect(name) {
         Ok(s) => s,
-        Err(_) => return Ok(false),
+        Err(_) => return Ok(None),
     };
     stream
-        .write_all(b"GET /health HTTP/1.1\r\nHost: coven\r\n\r\n")
+        .write_all(b"GET /health HTTP/1.1\r\nHost: coven\r\nContent-Length: 0\r\n\r\n")
         .context("failed to write Windows health request")?;
+    stream
+        .flush()
+        .context("failed to flush Windows health request")?;
     let mut response = String::new();
     stream
         .read_to_string(&mut response)
         .context("failed to read Windows health response")?;
     let Some((_, body)) = response.split_once("\r\n\r\n") else {
-        return Ok(false);
+        return Ok(None);
     };
     let body: DaemonHealthStatus =
         serde_json::from_str(body).context("failed to parse Windows health response")?;
     if body.ok {
-        Ok(body.daemon.map(|s| s.pid == expected_pid).unwrap_or(false))
+        Ok(body.daemon)
     } else {
-        Ok(false)
+        Ok(None)
     }
 }
 
@@ -3321,6 +3364,126 @@ mod tests {
 
         assert_eq!(ensured, status);
         assert_eq!(*started.lock().unwrap(), 0);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_background_server_reuses_daemon_recovered_from_default_socket() -> Result<()> {
+        use crate::api::NoopSessionRuntime;
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixStream;
+        use std::thread;
+
+        let temp_dir = tempfile::tempdir()?;
+        let status = DaemonStatus {
+            pid: 12345,
+            started_at: "2026-04-27T10:00:00Z".to_string(),
+            socket: daemon_socket_path(temp_dir.path())
+                .to_string_lossy()
+                .into_owned(),
+        };
+        let listener = bind_api_socket(temp_dir.path())?;
+        let home = temp_dir.path().to_path_buf();
+        let server_status = status.clone();
+        let server = thread::spawn(move || -> Result<()> {
+            let runtime = NoopSessionRuntime;
+            for _ in 0..2 {
+                serve_next_connection(&listener, &home, Some(server_status.clone()), &runtime)?;
+            }
+            Ok(())
+        });
+        let started = std::sync::Arc::new(std::sync::Mutex::new(0));
+
+        let ensured = ensure_background_server_with_controllers(
+            temp_dir.path(),
+            Path::new("/usr/bin/coven"),
+            "2026-04-27T10:00:00Z".to_string(),
+            &SystemDaemonStopController,
+            &FakeStartController {
+                started: started.clone(),
+                running_after_start: true,
+            },
+        )?;
+
+        if ensured != status {
+            for _ in 0..2 {
+                if let Ok(mut stream) = UnixStream::connect(daemon_socket_path(temp_dir.path())) {
+                    let _ = stream.write_all(b"GET /health HTTP/1.1\r\nHost: coven\r\n\r\n");
+                    let mut response = String::new();
+                    let _ = stream.read_to_string(&mut response);
+                }
+            }
+        }
+        server.join().expect("server thread")?;
+
+        assert_eq!(ensured, status);
+        assert_eq!(*started.lock().unwrap(), 0);
+        assert_eq!(read_status(temp_dir.path())?, Some(status));
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_background_server_recovers_live_daemon_when_status_pid_is_stale() -> Result<()> {
+        use crate::api::NoopSessionRuntime;
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixStream;
+        use std::thread;
+
+        let temp_dir = tempfile::tempdir()?;
+        let recovered = DaemonStatus {
+            pid: 12345,
+            started_at: "2026-04-27T10:00:00Z".to_string(),
+            socket: daemon_socket_path(temp_dir.path())
+                .to_string_lossy()
+                .into_owned(),
+        };
+        let stale = DaemonStatus {
+            pid: u32::MAX,
+            started_at: "2026-04-27T09:00:00Z".to_string(),
+            socket: daemon_socket_path(temp_dir.path())
+                .to_string_lossy()
+                .into_owned(),
+        };
+        write_status(temp_dir.path(), &stale)?;
+        let listener = bind_api_socket(temp_dir.path())?;
+        let home = temp_dir.path().to_path_buf();
+        let server_status = recovered.clone();
+        let server = thread::spawn(move || -> Result<()> {
+            let runtime = NoopSessionRuntime;
+            for _ in 0..3 {
+                serve_next_connection(&listener, &home, Some(server_status.clone()), &runtime)?;
+            }
+            Ok(())
+        });
+        let started = std::sync::Arc::new(std::sync::Mutex::new(0));
+
+        let ensured = ensure_background_server_with_controllers(
+            temp_dir.path(),
+            Path::new("/usr/bin/coven"),
+            "2026-04-27T10:00:00Z".to_string(),
+            &SystemDaemonStopController,
+            &FakeStartController {
+                started: started.clone(),
+                running_after_start: true,
+            },
+        )?;
+
+        if ensured != recovered {
+            for _ in 0..3 {
+                if let Ok(mut stream) = UnixStream::connect(daemon_socket_path(temp_dir.path())) {
+                    let _ = stream.write_all(b"GET /health HTTP/1.1\r\nHost: coven\r\n\r\n");
+                    let mut response = String::new();
+                    let _ = stream.read_to_string(&mut response);
+                }
+            }
+        }
+        server.join().expect("server thread")?;
+
+        assert_eq!(ensured, recovered);
+        assert_eq!(*started.lock().unwrap(), 0);
+        assert_eq!(read_status(temp_dir.path())?, Some(recovered));
         Ok(())
     }
 
