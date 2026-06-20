@@ -1426,8 +1426,21 @@ fn daemon_status_from_health_socket(socket: &str) -> Result<Option<DaemonStatus>
         let euid = unsafe { libc::geteuid() };
         check_owned_by_current_user(socket_path, metadata.uid(), euid)?;
     }
-    let mut stream = UnixStream::connect(socket)
-        .with_context(|| format!("failed to connect to Coven daemon socket {socket}"))?;
+    let mut stream = match UnixStream::connect(socket) {
+        Ok(stream) => stream,
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+            ) =>
+        {
+            return Ok(None);
+        }
+        Err(error) => {
+            return Err(error)
+                .with_context(|| format!("failed to connect to Coven daemon socket {socket}"));
+        }
+    };
     stream
         .write_all(b"GET /health HTTP/1.1\r\nHost: coven\r\n\r\n")
         .context("failed to write Coven health request")?;
@@ -3368,6 +3381,16 @@ mod tests {
 
         assert_eq!(ensured, status);
         assert_eq!(*started.lock().unwrap(), 0);
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn daemon_status_from_default_socket_returns_none_when_socket_is_absent() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+
+        assert_eq!(daemon_status_from_default_socket(temp_dir.path())?, None);
+
         Ok(())
     }
 
