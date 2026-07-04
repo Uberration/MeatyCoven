@@ -1,45 +1,42 @@
 ---
-summary: "Coven does not own provider credentials. Each harness keeps using its own login."
+summary: "Model selection in Coven means choosing a supported CLI login path."
 read_when:
-  - Auditing where model credentials live in a Coven install
-  - Setting up a fresh provider for an existing familiar
-title: "Models"
-description: "Coven is not a model gateway. Reference for how OpenCoven familiars use Anthropic, OpenAI, Google, and local models through harness-owned auth flows."
+  - Choosing which harness to install before running Coven
+  - Auditing why Coven does not ask for API keys
+title: "Model selection"
+description: "Coven only offers supported CLI-login harness choices: Codex CLI and Claude Code. It does not expose API-key model providers as selectable options."
 ---
 
-Coven is **not** a model gateway. It does not store API keys, OAuth tokens, or session cookies for any model provider. Each harness keeps using its own local auth flow.
+Coven is **not** a model gateway. It does not ask for provider API keys, OAuth tokens, or hosted account sessions. For now, model selection is intentionally limited to the two supported harness CLI login paths.
 
 <Columns>
-  <Card title="Provider boundary" href="/models/provider-boundary" icon="shield-check">
-    Where the credential boundary is and why it sits at the harness, not the daemon.
+  <Card title="Codex CLI" href="/harnesses/codex" icon="binary">
+    Install `@openai/codex`, run `codex login`, then launch with harness id `codex`.
   </Card>
-  <Card title="Why credentials stay with harnesses" href="/models/why-coven-does-not-own-credentials" icon="lock">
-    The local-first rationale.
+  <Card title="Claude Code" href="/harnesses/claude-code" icon="brain">
+    Install `@anthropic-ai/claude-code`, run `claude doctor`, then launch with harness id `claude`.
   </Card>
 </Columns>
 
-## Per-provider setup
+## Setup loop
 
-<Columns>
-  <Card title="Anthropic" href="/models/anthropic" icon="brain">
-    Through Claude Code.
-  </Card>
-  <Card title="OpenAI" href="/models/openai" icon="binary">
-    Through Codex.
-  </Card>
-  <Card title="Google" href="/models/google" icon="globe">
-    Through the Gemini CLI adapter (planned).
-  </Card>
-  <Card title="Local models" href="/models/local-models" icon="cpu">
-    Going fully offline through a local-model backend.
-  </Card>
-</Columns>
+```bash
+npm install -g @openai/codex
+codex login
+
+npm install -g @anthropic-ai/claude-code
+claude doctor
+
+coven doctor
+```
 
 ## What this means for clients
 
-A client (CastCodes, comux, or the OpenClaw plugin) cannot pass an API key into Coven. It must launch a harness whose own provider auth is already complete. `coven doctor` will report any harness whose auth is missing.
+A client (CastCodes, comux, or the OpenClaw plugin) cannot pass an API key into Coven or select a raw provider account. It launches either `codex` or `claude` after that CLI has completed its own login flow. `coven doctor` reports whether each CLI is installed and visible on `PATH`.
 
 ## Related
 
+- [Codex harness](/harnesses/codex)
+- [Claude Code harness](/harnesses/claude-code)
 - [Provider auth boundary](/harnesses/provider-auth)
 - [Safety model](/daemon/safety-model)

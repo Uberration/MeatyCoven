@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const criticalDocs = [
@@ -132,6 +132,29 @@ test('platform docs route users to the right install and operating model', () =>
     for (const phrase of required) {
       assert.match(text, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), `${path} must mention ${phrase}`);
     }
+  }
+});
+
+test('model selection only offers CLI-login harness choices', () => {
+  const text = readRepoFile('docs/models/index.md');
+
+  assert.match(text, /Codex CLI/i);
+  assert.match(text, /Claude Code/i);
+  assert.match(text, /codex login/);
+  assert.match(text, /claude doctor/);
+  assert.match(text, /\/harnesses\/codex/);
+  assert.match(text, /\/harnesses\/claude-code/);
+  assert.doesNotMatch(text, /Per-provider setup/i);
+  assert.doesNotMatch(text, /\/models\/(?:openai|anthropic|google|local-models)\b/i);
+  assert.doesNotMatch(text, /\b(?:Google|Gemini|Local models|OpenAI|Anthropic)\b/);
+
+  for (const path of [
+    'docs/models/openai.md',
+    'docs/models/anthropic.md',
+    'docs/models/google.md',
+    'docs/models/local-models.md'
+  ]) {
+    assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), false, `${path} must not be a selectable model option`);
   }
 });
 
