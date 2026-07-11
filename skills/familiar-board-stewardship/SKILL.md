@@ -43,6 +43,21 @@ preserves the same card semantics.
     sweeps.
   - Echo: continuity, retrospection, memory promotion, pattern review.
   - Nova: orchestration, system changes, board hygiene, cross-lane routing.
+  - Salem: guardian and watch — Coven health, session and daemon posture,
+    claims and locks, protected boundaries, and precise escalation.
+
+## Roster canon
+
+The eight lanes above are the canonical familiar roster: Astra, Charm, Sage,
+Cody, Kitty, Echo, Nova, Salem. Route board work to exactly these owners.
+
+`codex` is a harness/workspace alias, not a familiar — it has no
+IDENTITY/SOUL/lane and must not be assigned as a card owner. When board data
+carries a `codex` `familiarId`, treat it as unrouted and reassign to the correct
+lane owner.
+
+When the roster changes, update this list first, then the wiring block below, so
+the standard never drifts behind the live workspaces.
 
 ## Adding cards
 
@@ -99,3 +114,19 @@ OpenCoven/coven/skills/familiar-board-stewardship/
 
 Harnesses should consume this directory by symlink or package distribution
 rather than copying it into OpenClaw-specific workspace skills.
+
+## Wiring convention
+
+Every familiar workspace consumes this standard as a symlink to the canonical
+source, mirroring the `coven-board-entry` convention. Do not copy the directory
+— edit the canonical source and let every workspace pick up the change.
+
+```bash
+# Wire the standard into a familiar workspace (idempotent):
+ln -s /Users/buns/Documents/GitHub/OpenCoven/coven/skills/familiar-board-stewardship \
+  /Users/buns/.coven/workspaces/familiars/<familiar>/skills/familiar-board-stewardship
+```
+
+Target every lane owner in the roster canon: astra, charm, cody, echo, kitty,
+nova, sage, salem. Create the workspace `skills/` directory first where it does
+not exist. `codex` is excluded — it is a harness alias, not a familiar.
