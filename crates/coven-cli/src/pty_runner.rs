@@ -113,6 +113,7 @@ pub fn run_attached(command: &HarnessCommand) -> Result<PtyRunResult> {
 /// with the frames (#307). Stdin is still forwarded to the PTY, matching
 /// `run_attached`; raw terminal mode is never enabled because nothing is
 /// echoed back to the caller's terminal.
+#[cfg(not(windows))]
 pub fn run_attached_captured(
     command: &HarnessCommand,
     mut on_output: Box<dyn FnMut(Vec<u8>) + Send + 'static>,
@@ -148,6 +149,108 @@ pub fn run_attached_captured(
     drain_detached_output(&mut reader, Some(&mut on_output));
 
     Ok(wait_for_child(&mut child))
+}
+
+/// Run a one-shot harness directly on inherited stdio without allocating a
+/// pseudo-terminal. Windows Codex `exec` is reliable in this mode while its
+/// ConPTY child can stall before producing output. Inherited handles preserve
+/// the caller's stdout/stderr stream exactly (including Coven's JSON framing).
+#[cfg(windows)]
+pub fn run_piped_attached(
+    command: &HarnessCommand,
+    merge_stderr_to_stdout: bool,
+) -> Result<PtyRunResult> {
+    let mut child = std::process::Command::new(&command.program)
+        .args(&command.args)
+        .current_dir(&command.cwd)
+        .stdin(Stdio::inherit())
+        // In stream mode Codex duplicates its final answer on stdout while
+        // stderr carries the complete labeled transcript that Cave's filter
+        // consumes. Keep only the transcript to avoid rendering it twice.
+        .stdout(if merge_stderr_to_stdout {
+            Stdio::null()
+        } else {
+            Stdio::inherit()
+        })
+        .stderr(if merge_stderr_to_stdout {
+            Stdio::piped()
+        } else {
+            Stdio::inherit()
+        })
+        .spawn()
+        .with_context(|| {
+            format!(
+                "failed to spawn harness `{}` in piped mode",
+                command.program()
+            )
+        })?;
+
+    // Codex on Windows writes its complete `exec` transcript (including the
+    // final assistant response) to stderr. `coven run --stream-json` is a
+    // stdout protocol consumed by Cave, so forward that transcript to stdout
+    // for stream clients while continuing to drain it concurrently.
+    let stderr_forwarder = child.stderr.take().map(|mut stderr| {
+        thread::spawn(move || -> io::Result<()> {
+            let stdout = io::stdout();
+            let mut stdout = stdout.lock();
+            io::copy(&mut stderr, &mut stdout)?;
+            stdout.flush()
+        })
+    });
+
+    let status = child.wait().context("failed waiting for piped harness")?;
+    if let Some(forwarder) = stderr_forwarder {
+        forwarder
+            .join()
+            .map_err(|_| anyhow::anyhow!("stderr forwarding thread panicked"))?
+            .context("failed forwarding harness stderr to stdout")?;
+    }
+    Ok(PtyRunResult {
+        status: if status.success() {
+            "completed"
+        } else {
+            "failed"
+        },
+        exit_code: status.code(),
+    })
+}
+
+/// Run a one-shot Windows harness through ordinary pipes while keeping stdout
+/// available for Coven's stream-JSON protocol. Codex writes its labeled
+/// transcript to stderr, so capture that stream and let the caller wrap it in
+/// JSON `output` events; discard Codex's duplicate plain stdout answer.
+#[cfg(windows)]
+pub fn run_piped_attached_captured(
+    command: &HarnessCommand,
+    mut on_output: Box<dyn FnMut(Vec<u8>) + Send + 'static>,
+) -> Result<PtyRunResult> {
+    let mut child = std::process::Command::new(&command.program)
+        .args(&command.args)
+        .current_dir(&command.cwd)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "failed to spawn harness `{}` in captured piped mode",
+                command.program()
+            )
+        })?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .context("captured piped harness did not expose stderr")?;
+    drain_detached_output(&mut stderr, Some(&mut on_output));
+    let status = child.wait().context("failed waiting for piped harness")?;
+    Ok(PtyRunResult {
+        status: if status.success() {
+            "completed"
+        } else {
+            "failed"
+        },
+        exit_code: status.code(),
+    })
 }
 
 /// Run `claude` in its native stream-JSON mode, framed by the caller (which
@@ -360,6 +463,7 @@ pub struct PipedSession {
 pub fn spawn_piped_with_observer(
     command: &HarnessCommand,
     observer: Option<DetachedPtyObserver>,
+    wrap_stderr_as_stream_json: bool,
 ) -> Result<PipedSession> {
     use std::process::Command as StdCommand;
     use std::sync::{Arc, Mutex as StdMutex};
@@ -446,12 +550,16 @@ pub fn spawn_piped_with_observer(
                         _ => &buf[..],
                     };
                     let line = String::from_utf8_lossy(trimmed);
-                    let envelope = serde_json::json!({
-                        "type": "system",
-                        "subtype": "stderr",
-                        "text": line,
-                    });
-                    let mut payload = envelope.to_string();
+                    let mut payload = if wrap_stderr_as_stream_json {
+                        serde_json::json!({
+                            "type": "system",
+                            "subtype": "stderr",
+                            "text": line,
+                        })
+                        .to_string()
+                    } else {
+                        line.into_owned()
+                    };
                     payload.push('\n');
                     if let Ok(mut cb) = stderr_callback.lock() {
                         cb(payload.into_bytes());

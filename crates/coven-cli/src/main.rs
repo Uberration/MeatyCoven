@@ -1484,13 +1484,14 @@ fn launch_patch_session(request: &patch::PatchRequest) -> Result<String> {
         None,
         &current_timestamp(),
     )?;
+    let launch_mode = harness_launch_mode_for_stdio(&selected_harness.id);
     let command = pty_runner::build_harness_command(
         &selected_harness.id,
         &brief,
         &request.repo.root,
-        harness_launch_mode_for_stdio(),
+        launch_mode,
     )?;
-    let result = pty_runner::run_attached(&command)?;
+    let result = run_harness_attached(&command, launch_mode, false)?;
     store::update_session_status(
         &conn,
         &record.id,
@@ -1694,12 +1695,47 @@ fn render_daemon_status_json(state: Option<&daemon::DaemonStatusState>) -> Resul
     serde_json::to_string_pretty(&value).context("failed to serialize daemon status as JSON")
 }
 
-fn harness_launch_mode_for_stdio() -> harness::HarnessLaunchMode {
-    if io::stdin().is_terminal() && io::stdout().is_terminal() {
+fn harness_launch_mode_for_stdio(harness_id: &str) -> harness::HarnessLaunchMode {
+    harness_launch_mode(
+        harness_id,
+        io::stdin().is_terminal(),
+        io::stdout().is_terminal(),
+        cfg!(windows),
+    )
+}
+
+fn harness_launch_mode(
+    harness_id: &str,
+    stdin_is_terminal: bool,
+    stdout_is_terminal: bool,
+    is_windows: bool,
+) -> harness::HarnessLaunchMode {
+    // `codex <prompt>` opens the long-lived interactive TUI. Under Coven's
+    // Windows ConPTY bridge that child can remain alive without reliably
+    // rendering or persisting its answer. The one-shot `codex exec` path is
+    // supported already and exits after printing the response, so prefer it
+    // for prompted Windows runs even when Coven itself owns a terminal.
+    if is_windows && harness_id == "codex" {
+        harness::HarnessLaunchMode::NonInteractive
+    } else if stdin_is_terminal && stdout_is_terminal {
         harness::HarnessLaunchMode::Interactive
     } else {
         harness::HarnessLaunchMode::NonInteractive
     }
+}
+
+fn run_harness_attached(
+    command: &pty_runner::HarnessCommand,
+    launch_mode: harness::HarnessLaunchMode,
+    stream_json: bool,
+) -> Result<pty_runner::PtyRunResult> {
+    #[cfg(windows)]
+    if launch_mode == harness::HarnessLaunchMode::NonInteractive {
+        return pty_runner::run_piped_attached(command, stream_json);
+    }
+    #[cfg(not(windows))]
+    let _ = (launch_mode, stream_json);
+    pty_runner::run_attached(command)
 }
 
 /// Lock stdout, emit one stream-JSON frame, release. Per-frame locking keeps
@@ -2109,31 +2145,25 @@ fn run_session(
         .as_ref()
         .filter(|s| s.system_prompt_flag.is_some())
         .and(familiar_ctx.as_ref());
+    let launch_mode = if stream_json {
+        // stream-json is a machine protocol: always launch one-shot.
+        harness::HarnessLaunchMode::NonInteractive
+    } else {
+        harness_launch_mode_for_stdio(&selected_harness.id)
+    };
     let command = pty_runner::build_harness_command_with_conversation(
         &selected_harness.id,
         &effective_prompt,
         &cwd,
-        if stream_json {
-            // stream-json is a machine protocol: always launch the harness
-            // one-shot/non-interactive, even when stdio happens to be a
-            // terminal. The claude pass-through above does the same (`-p`);
-            // launching a TUI here would leave the harness waiting on
-            // keystrokes for a screen that is never rendered.
-            harness::HarnessLaunchMode::NonInteractive
-        } else {
-            harness_launch_mode_for_stdio()
-        },
+        launch_mode,
         conversation_hint.as_ref(),
         familiar_for_args,
         launch_options,
     )?;
-    // Non-stream harnesses run on a PTY. In stream-json mode, mirroring the
-    // raw PTY bytes to stdout would interleave ANSI escapes / prompts /
-    // partial lines with the JSONL frames and corrupt the stream for every
-    // consumer (#307), so the PTY is captured instead and each chunk is
-    // wrapped in an `output` event. Emit failures inside the callback are
-    // ignored (the consumer may have closed the pipe mid-run); the `result`
-    // emission below surfaces a dead stdout as an error.
+    // Preserve the JSONL-only captured-output contract from #315 on
+    // non-Windows platforms. Windows Codex must bypass ConPTY and use the
+    // verified ordinary-pipe path so Cave receives a terminal response.
+    #[cfg(not(windows))]
     let attached = if stream_json {
         let output_session_id = record.id.clone();
         pty_runner::run_attached_captured(
@@ -2147,8 +2177,25 @@ fn run_session(
             }),
         )
     } else {
-        pty_runner::run_attached(&command)
+        run_harness_attached(&command, launch_mode, false)
     };
+    #[cfg(windows)]
+    let attached = if stream_json {
+        let output_session_id = record.id.clone();
+        pty_runner::run_piped_attached_captured(
+            &command,
+            Box::new(move |chunk| {
+                let _ =
+                    emit_stream_event(&stream_json::Event::Output(stream_json::HarnessOutput {
+                        text: String::from_utf8_lossy(&chunk).into_owned(),
+                        session_id: output_session_id.clone(),
+                    }));
+            }),
+        )
+    } else {
+        run_harness_attached(&command, launch_mode, false)
+    };
+
     match attached {
         Ok(result) => {
             store::update_session_status(
@@ -2941,6 +2988,30 @@ mod tests {
         assert_eq!(
             interactive_shell_route(Some(&Command::Chat), false, false),
             InteractiveShellRoute::PlainCast
+        );
+    }
+
+    #[test]
+    fn windows_codex_prompt_uses_completing_noninteractive_mode() {
+        assert_eq!(
+            harness_launch_mode("codex", true, true, true),
+            harness::HarnessLaunchMode::NonInteractive
+        );
+    }
+
+    #[test]
+    fn launch_mode_preserves_interactive_claude_and_non_windows_codex() {
+        assert_eq!(
+            harness_launch_mode("claude", true, true, true),
+            harness::HarnessLaunchMode::Interactive
+        );
+        assert_eq!(
+            harness_launch_mode("codex", true, true, false),
+            harness::HarnessLaunchMode::Interactive
+        );
+        assert_eq!(
+            harness_launch_mode("codex", false, true, false),
+            harness::HarnessLaunchMode::NonInteractive
         );
     }
 
