@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 #[cfg(unix)]
 use std::io::Read;
 use std::io::{self, BufRead, IsTerminal, Write};
@@ -19,6 +19,8 @@ mod control_plane;
 mod coven_calls;
 mod daemon;
 mod encrypted_artifacts;
+mod engine;
+mod engine_install;
 mod eval_loop;
 mod executor_node;
 mod familiar_identity;
@@ -103,6 +105,11 @@ enum Command {
     Adapter {
         #[command(subcommand)]
         command: AdapterCommand,
+    },
+    #[command(about = "Manage the Coven engine (the interactive agent runtime)")]
+    Engine {
+        #[command(subcommand)]
+        command: EngineCommand,
     },
     #[command(about = "Manage the local Coven daemon")]
     Daemon {
@@ -321,6 +328,30 @@ enum Command {
         #[command(subcommand)]
         command: Option<pc::PcCommand>,
     },
+    #[command(
+        about = "Manage model provider credentials (Anthropic, Codex) — runs in the Coven engine"
+    )]
+    Auth {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        args: Vec<OsString>,
+    },
+    #[command(about = "List available models — runs in the Coven engine")]
+    Models {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        args: Vec<OsString>,
+    },
+    #[command(
+        about = "Start the Agent Client Protocol server (stdio JSON-RPC) — runs in the Coven engine"
+    )]
+    Acp {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        args: Vec<OsString>,
+    },
+    #[command(about = "Run any Coven engine subcommand directly (escape hatch)")]
+    Code {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, num_args = 0..)]
+        args: Vec<OsString>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -388,6 +419,24 @@ enum DaemonCommand {
         )]
         tcp: Option<String>,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum EngineCommand {
+    #[command(about = "Show resolved engine path, source, version, and pin state")]
+    Status {
+        #[arg(long, help = "Emit JSON")]
+        json: bool,
+    },
+    #[command(about = "Download and install the pinned engine into ~/.coven/engine")]
+    Install {
+        #[arg(long, help = "Install a specific version instead of the default")]
+        version: Option<String>,
+        #[arg(long, help = "Reinstall even if already present")]
+        force: bool,
+    },
+    #[command(about = "Print the engine binary path coven will use (exit 1 if none)")]
+    Which,
 }
 
 #[derive(Subcommand, Debug)]
@@ -520,6 +569,7 @@ fn run_cli(cli: Cli) -> Result<()> {
             Ok(())
         }
         Some(Command::Adapter { command }) => run_adapter_command(command),
+        Some(Command::Engine { command }) => run_engine_command(command),
         Some(Command::Daemon { command }) => run_daemon_command(command),
         Some(Command::Executor { command }) => run_executor_command(command),
         Some(Command::Run {
@@ -622,6 +672,10 @@ fn run_cli(cli: Cli) -> Result<()> {
             keep_session,
         ),
         Some(Command::Pc { command }) => pc::run_pc_command(command),
+        Some(Command::Auth { args }) => run_engine_passthrough(Some("auth"), &args),
+        Some(Command::Models { args }) => run_engine_passthrough(Some("models"), &args),
+        Some(Command::Acp { args }) => run_engine_passthrough(Some("acp"), &args),
+        Some(Command::Code { args }) => run_engine_passthrough(None, &args),
     }
 }
 
@@ -745,7 +799,61 @@ fn run_shared_interactive_shell() -> Result<()> {
 
     match coven_code_binary() {
         Some(binary) => try_delegate_to_coven_code(&binary),
-        None => Err(missing_coven_code_error()),
+        None => {
+            let offer = should_offer_auto_install(
+                false,
+                io::stdin().is_terminal(),
+                io::stdout().is_terminal(),
+                auto_install_opted_out(),
+            );
+            if offer {
+                match prompt_and_install_engine()? {
+                    Some(path) => try_delegate_to_coven_code(&path),
+                    None => Err(missing_coven_code_error()),
+                }
+            } else {
+                Err(missing_coven_code_error())
+            }
+        }
+    }
+}
+
+/// Whether to offer auto-installing the engine. Interactive only, and never
+/// when an engine is already present or the user opted out.
+fn should_offer_auto_install(
+    engine_present: bool,
+    stdin_tty: bool,
+    stdout_tty: bool,
+    opt_out: bool,
+) -> bool {
+    !engine_present && stdin_tty && stdout_tty && !opt_out
+}
+
+/// `COVEN_NO_AUTO_INSTALL=1` (or `=true`) disables the first-run install prompt
+/// (used by CI and non-interactive automation).
+fn auto_install_opted_out() -> bool {
+    matches!(
+        std::env::var("COVEN_NO_AUTO_INSTALL").as_deref(),
+        Ok("1") | Ok("true")
+    )
+}
+
+/// Ask the user (on a known-TTY) whether to install the engine now. Returns
+/// the installed binary path on yes, `None` if the user declined. Propagates
+/// install errors.
+fn prompt_and_install_engine() -> Result<Option<PathBuf>> {
+    eprintln!("The Coven engine is required for the interactive UI and isn't installed yet.");
+    eprint!("Download and install it now (~40 MB)? [Y/n] ");
+    io::stderr().flush().ok();
+    let mut answer = String::new();
+    io::stdin().read_line(&mut answer)?;
+    let answer = answer.trim();
+    if answer.is_empty() || answer.eq_ignore_ascii_case("y") || answer.eq_ignore_ascii_case("yes") {
+        let (path, _) =
+            engine_install::install(engine_install::DEFAULT_ENGINE_VERSION, None, false)?;
+        Ok(Some(path))
+    } else {
+        Ok(None)
     }
 }
 
@@ -770,8 +878,8 @@ fn target_shell() -> TargetShell {
 
 fn missing_coven_code_error_message(shell: TargetShell) -> String {
     format!(
-        "coven-code is required for the interactive Coven UI but was not found on PATH \
-         or under ~/.coven-code/bin.\n\n\
+        "The Coven engine is required for the interactive Coven UI but was not found on PATH, \
+         under ~/.coven/engine, or ~/.coven-code/bin.\n\n\
          Install it with:\n\
          {install}\n\n\
          If you need the legacy slash shell temporarily, run:\n\
@@ -799,10 +907,10 @@ fn legacy_tui_warning_message(shell: TargetShell) -> String {
 fn coven_code_install_instructions(shell: TargetShell) -> &'static str {
     match shell {
         TargetShell::Posix => {
-            "  npm install -g @opencoven/coven-code\n  curl -fsSL https://github.com/OpenCoven/coven-code/releases/latest/download/install.sh | bash"
+            "  coven engine install\n  (manual: curl -fsSL https://github.com/OpenCoven/coven-code/releases/latest/download/install.sh | bash)"
         }
         TargetShell::PowerShell => {
-            "  npm install -g @opencoven/coven-code\n  irm https://github.com/OpenCoven/coven-code/releases/latest/download/install.ps1 | iex"
+            "  coven engine install\n  (manual: irm https://github.com/OpenCoven/coven-code/releases/latest/download/install.ps1 | iex)"
         }
     }
 }
@@ -825,70 +933,74 @@ fn legacy_tui_opted_in() -> bool {
     )
 }
 
-/// Locate the `coven-code` binary on PATH or in `~/.coven-code/bin/`.
+/// Locate the engine binary via the managed-engine resolver.
+/// Kept as a thin shim so existing call sites don't churn.
 fn coven_code_binary() -> Option<PathBuf> {
-    let path_var = std::env::var_os("PATH");
-    let home = dirs_next::home_dir();
-    coven_code_binary_from(path_var.as_deref(), home.as_deref())
+    engine::resolve().map(|resolved| resolved.path)
 }
 
-fn coven_code_binary_from(path_var: Option<&OsStr>, home: Option<&Path>) -> Option<PathBuf> {
-    let names: &[&str] = if cfg!(windows) {
-        &["coven-code.exe", "coven-code.cmd", "coven-code.bat"]
-    } else {
-        &["coven-code"]
-    };
-    coven_code_binary_from_names(path_var, home, names)
+/// Build a `Command` for the engine binary with the standard parent-context
+/// env. Callers add their own args.
+fn engine_command(binary: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(binary);
+    command.env("COVEN_PARENT", "coven");
+    // Forward COVEN_HOME only when explicitly set; otherwise the engine derives
+    // the same default from HOME/USERPROFILE that coven would.
+    if let Some(home) = std::env::var_os("COVEN_HOME") {
+        command.env("COVEN_HOME", home);
+    }
+    command
 }
 
-fn coven_code_binary_from_names(
-    path_var: Option<&OsStr>,
-    home: Option<&Path>,
-    names: &[&str],
-) -> Option<PathBuf> {
-    if let Some(path_var) = path_var {
-        for dir in std::env::split_paths(path_var) {
-            for name in names {
-                let candidate = dir.join(name);
-                if is_executable_file(&candidate) {
-                    return Some(candidate);
-                }
-            }
-        }
-    }
-    if let Some(home) = home {
-        let bin_dir = home.join(".coven-code").join("bin");
-        for name in names {
-            let candidate = bin_dir.join(name);
-            if is_executable_file(&candidate) {
-                return Some(candidate);
-            }
-        }
-    }
-    None
-}
-
-fn is_executable_file(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
+/// Run the engine command, replacing this process on unix (exec) or spawning
+/// and propagating the exit code elsewhere. Returns only on failure.
+fn exec_engine(mut command: std::process::Command) -> Result<()> {
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::metadata(path)
-            .map(|m| m.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
+        use std::os::unix::process::CommandExt;
+        let err = command.exec();
+        Err(anyhow!("failed to exec coven-code: {err}"))
     }
     #[cfg(not(unix))]
     {
-        true
+        let status = command
+            .status()
+            .map_err(|e| anyhow!("failed to launch coven-code: {e}"))?;
+        std::process::exit(status.code().unwrap_or(1));
     }
+}
+
+/// Exec the engine with an optional fixed leading subcommand plus user args.
+/// Used for curated passthroughs (auth/models/acp) and the raw `code` hatch.
+fn run_engine_passthrough(lead: Option<&str>, args: &[OsString]) -> Result<()> {
+    let engine = engine::require()?;
+    let mut command = engine_command(&engine.path);
+    if let Some(lead) = lead {
+        command.arg(lead);
+    }
+    command.args(args);
+    exec_engine(command)
 }
 
 /// Exec `coven-code` in place of the current process. Returns only on failure;
 /// on success the child takes over this PID and stdio.
 fn try_delegate_to_coven_code(binary: &Path) -> Result<()> {
-    let mut command = std::process::Command::new(binary);
+    // Refuse engines older than the minimum the contract requires.
+    match engine::engine_version(binary) {
+        Ok(version) if !engine::version_meets_minimum(version) => {
+            return Err(anyhow!(engine::engine_too_old_message(
+                binary,
+                version,
+                engine::MIN_ENGINE_VERSION
+            )));
+        }
+        Ok(_) => {}
+        // If we can't read the version, don't block launch — proceed and let the
+        // engine speak for itself. (A pin-drift warning is added in Task 2.1.)
+        Err(_) => {}
+    }
+
+    let mut command = engine_command(binary);
     // Pass through every flag the user supplied to `coven`/`coven tui` so
     // any future coven-code substrate flags work end-to-end. We strip argv[0]
     // and the optional leading `tui` subcommand because coven-code expects
@@ -901,23 +1013,7 @@ fn try_delegate_to_coven_code(binary: &Path) -> Result<()> {
         args.remove(0);
     }
     command.args(args);
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        let err = command.exec();
-        // exec only returns on failure.
-        Err(anyhow!("failed to exec coven-code: {err}"))
-    }
-
-    #[cfg(not(unix))]
-    {
-        let status = command
-            .status()
-            .map_err(|e| anyhow!("failed to launch coven-code: {e}"))?;
-        // A signal-terminated child has no code; treat it as failure.
-        std::process::exit(status.code().unwrap_or(1));
-    }
+    exec_engine(command)
 }
 
 fn interactive_shell_route(
@@ -1000,12 +1096,39 @@ fn run_doctor() -> Result<()> {
         healthy = false;
     }
 
-    println!("\nInteractive UI:");
-    match coven_code_binary() {
-        Some(path) => println!("  [OK] coven-code found at {}", path.display()),
+    println!("\nEngine:");
+    match engine::resolve() {
+        Some(resolved) => {
+            println!(
+                "  [OK] {} ({})",
+                resolved.path.display(),
+                engine_source_label(&resolved.source)
+            );
+            match engine::engine_version(&resolved.path) {
+                Ok(version) => {
+                    let (a, b, c) = version;
+                    let (min_a, min_b, min_c) = engine::MIN_ENGINE_VERSION;
+                    if engine::version_meets_minimum(version) {
+                        println!("       version {a}.{b}.{c} (minimum {min_a}.{min_b}.{min_c})");
+                    } else {
+                        healthy = false;
+                        println!(
+                            "  [!!] version {a}.{b}.{c} is older than the minimum {min_a}.{min_b}.{min_c} — run: coven engine install"
+                        );
+                    }
+                }
+                Err(_) => println!("       version: unknown (could not run the engine)"),
+            }
+            println!("       pin: none (dev)"); // Task 2.1 fills this from engine.lock
+            match engine_auth_summary(&resolved.path) {
+                Some(true) => println!("       auth: logged in"),
+                Some(false) => println!("       auth: not logged in — run `coven auth login`"),
+                None => println!("       auth: check skipped"),
+            }
+        }
         None => {
             healthy = false;
-            println!("  [!!] coven-code is missing — `coven` and `coven chat` need it");
+            println!("  [!!] the Coven engine is missing — `coven` and `coven chat` need it");
             for line in coven_code_install_instructions(target_shell()).lines() {
                 println!("     {line}");
             }
@@ -1577,6 +1700,128 @@ fn run_vacuum_command() -> Result<()> {
         store_path.display()
     );
     Ok(())
+}
+
+fn run_engine_command(command: EngineCommand) -> Result<()> {
+    match command {
+        EngineCommand::Status { json } => engine_status(json),
+        EngineCommand::Install { version, force } => {
+            let version =
+                version.unwrap_or_else(|| engine_install::DEFAULT_ENGINE_VERSION.to_string());
+            // Task 2.1 will thread the pinned checksum here; None = dev mode.
+            let (path, outcome) = engine_install::install(&version, None, force)?;
+            match outcome {
+                engine_install::InstallOutcome::Installed => {
+                    println!("Installed Coven engine {version} at {}", path.display());
+                }
+                engine_install::InstallOutcome::AlreadyPresent => {
+                    println!(
+                        "Coven engine {version} already present at {} (use --force to reinstall)",
+                        path.display()
+                    );
+                }
+            }
+            Ok(())
+        }
+        EngineCommand::Which => match engine::resolve() {
+            Some(resolved) => {
+                println!("{}", resolved.path.display());
+                Ok(())
+            }
+            None => {
+                std::process::exit(1);
+            }
+        },
+    }
+}
+
+fn engine_source_label(source: &engine::EngineSource) -> &'static str {
+    match source {
+        engine::EngineSource::EnvOverride => "COVEN_ENGINE_BIN override",
+        engine::EngineSource::Managed => "managed (~/.coven/engine)",
+        engine::EngineSource::PathLookup => "PATH",
+        engine::EngineSource::LegacyHome => "legacy (~/.coven-code/bin)",
+    }
+}
+
+/// Query the engine's auth state via `auth status --json`, bounded to ~5s so a
+/// hung engine never hangs `coven doctor`. Returns `Some(logged_in)` on a clean
+/// parse, or `None` if the check couldn't be completed (spawn/timeout/parse
+/// failure) — the caller treats `None` as a skipped, non-blocking check.
+fn engine_auth_summary(binary: &Path) -> Option<bool> {
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    let mut child = std::process::Command::new(binary)
+        .args(["auth", "status", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => return None,
+        }
+    }
+
+    // `auth status --json` output is a few hundred bytes — far under the pipe
+    // buffer — so reading after exit cannot deadlock.
+    let mut buf = String::new();
+    child.stdout.take()?.read_to_string(&mut buf).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&buf).ok()?;
+    json.get("loggedIn")?.as_bool()
+}
+
+fn engine_status(json: bool) -> Result<()> {
+    match engine::resolve() {
+        Some(resolved) => {
+            let version = engine::engine_version(&resolved.path).ok();
+            let version_str = version
+                .map(|(a, b, c)| format!("{a}.{b}.{c}"))
+                .unwrap_or_else(|| "unknown".to_string());
+            if json {
+                let obj = serde_json::json!({
+                    "installed": true,
+                    "path": resolved.path.display().to_string(),
+                    "source": engine_source_label(&resolved.source),
+                    "version": version_str,
+                    "pin": serde_json::Value::Null, // Task 2.1
+                });
+                println!("{}", serde_json::to_string_pretty(&obj)?);
+            } else {
+                println!("Coven engine");
+                println!("  Path:    {}", resolved.path.display());
+                println!("  Source:  {}", engine_source_label(&resolved.source));
+                println!("  Version: {version_str}");
+                println!("  Pin:     none (dev)"); // Task 2.1 fills this in
+            }
+            Ok(())
+        }
+        None => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({"installed": false}))?
+                );
+            } else {
+                println!("Coven engine: not installed");
+                println!("  Run: coven engine install");
+            }
+            Ok(())
+        }
+    }
 }
 
 fn run_daemon_command(command: DaemonCommand) -> Result<()> {
@@ -2701,6 +2946,7 @@ mod tests {
         MagicalTuiMove, MagicalTuiRequest, MAGICAL_TUI_MAX_INNER_WIDTH,
     };
     use crossterm::event::KeyEventKind;
+    use std::ffi::OsStr;
     use std::sync::{Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -3937,11 +4183,11 @@ mod tests {
 
     #[test]
     fn missing_coven_code_error_includes_install_instructions() {
-        // The error message is the primary onboarding surface when coven-code
-        // is absent, so it must list at least one concrete install path and
-        // mention the legacy escape hatch.
+        // The error message is the primary onboarding surface when the engine
+        // is absent, so it must lead with the unified command and mention the
+        // fallback script and the legacy escape hatch.
         let msg = missing_coven_code_error_message(TargetShell::Posix);
-        assert!(msg.contains("npm install -g @opencoven/coven-code"));
+        assert!(msg.contains("coven engine install"));
         assert!(msg.contains("install.sh"));
         assert!(msg.contains("COVEN_LEGACY_TUI=1"));
     }
@@ -3950,40 +4196,11 @@ mod tests {
     fn missing_coven_code_error_includes_windows_powershell_instructions() {
         let msg = missing_coven_code_error_message(TargetShell::PowerShell);
 
+        assert!(msg.contains("coven engine install"));
         assert!(msg.contains("irm https://github.com/OpenCoven/coven-code/releases/latest/download/install.ps1 | iex"));
         assert!(msg.contains("$env:COVEN_LEGACY_TUI = \"1\""));
         assert!(msg.contains("Remove-Item Env:COVEN_LEGACY_TUI"));
         assert!(!msg.contains("install.sh | bash"));
-    }
-
-    #[test]
-    fn coven_code_binary_lookup_returns_none_for_empty_path() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert!(coven_code_binary_from(Some(OsStr::new("")), Some(tmp.path())).is_none());
-    }
-
-    #[test]
-    fn coven_code_binary_lookup_finds_windows_npm_cmd_shim() {
-        let tmp = tempfile::tempdir().unwrap();
-        let shim = tmp.path().join("coven-code.cmd");
-        std::fs::write(&shim, "@echo off\r\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut permissions = std::fs::metadata(&shim).unwrap().permissions();
-            permissions.set_mode(0o755);
-            std::fs::set_permissions(&shim, permissions).unwrap();
-        }
-        let path_var = std::env::join_paths([tmp.path()]).unwrap();
-
-        assert_eq!(
-            coven_code_binary_from_names(
-                Some(path_var.as_os_str()),
-                None,
-                &["coven-code.exe", "coven-code.cmd", "coven-code.bat"]
-            ),
-            Some(shim)
-        );
     }
 
     fn sample_daemon_status() -> daemon::DaemonStatus {
@@ -4028,5 +4245,36 @@ mod tests {
         assert_eq!(value["pid"], serde_json::Value::Null);
         assert_eq!(value["socket"], serde_json::Value::Null);
         assert_eq!(value["started_at"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn auto_install_only_offered_interactively() {
+        assert!(should_offer_auto_install(false, true, true, false));
+        assert!(!should_offer_auto_install(false, false, true, false)); // piped stdin
+        assert!(!should_offer_auto_install(false, true, false, false)); // piped stdout
+        assert!(!should_offer_auto_install(true, true, true, false)); // already installed
+        assert!(!should_offer_auto_install(false, true, true, true)); // opt-out
+    }
+
+    #[test]
+    fn passthrough_subcommands_are_registered_and_unique() {
+        // Drives off the real Cli definition so it can't silently rot as commands
+        // are added. clap guarantees subcommand-name uniqueness at construction
+        // (Cli::command() would panic on a duplicate), so asserting each passthrough
+        // resolves to exactly one registered subcommand catches an accidental
+        // rename or a collision with a future coven-owned command.
+        use clap::CommandFactory;
+        let cmd = Cli::command();
+        let names: Vec<String> = cmd
+            .get_subcommands()
+            .map(|s| s.get_name().to_string())
+            .collect();
+        for passthrough in ["auth", "models", "acp", "code"] {
+            assert_eq!(
+                names.iter().filter(|n| n.as_str() == passthrough).count(),
+                1,
+                "passthrough `{passthrough}` must be exactly one registered subcommand"
+            );
+        }
     }
 }
