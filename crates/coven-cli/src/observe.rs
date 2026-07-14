@@ -19,6 +19,74 @@ use crate::{api, coven_home_dir, daemon, theme};
 /// Column cap for free-text table cells (descriptions, requests, reasons).
 const TEXT_CELL_LIMIT: usize = 48;
 
+/// Which read-only view to render. Mirrors the top-level CLI observability
+/// commands one-to-one; the Cast shell and the chat UI reuse these views so
+/// every surface renders the same data the same way.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ObserveView {
+    Status,
+    Familiars,
+    Skills,
+    Memory,
+    Research,
+    Calls,
+    HubStatus,
+}
+
+impl ObserveView {
+    /// The CLI command this view mirrors, shown on plan/outcome cards so
+    /// users learn the scriptable spelling.
+    pub(crate) fn command(self) -> &'static str {
+        match self {
+            ObserveView::Status => "coven status",
+            ObserveView::Familiars => "coven familiars",
+            ObserveView::Skills => "coven skills",
+            ObserveView::Memory => "coven memory",
+            ObserveView::Research => "coven research",
+            ObserveView::Calls => "coven calls",
+            ObserveView::HubStatus => "coven hub status",
+        }
+    }
+
+    pub(crate) fn headline(self) -> &'static str {
+        match self {
+            ObserveView::Status => "Show the coven status overview",
+            ObserveView::Familiars => "List the familiar roster",
+            ObserveView::Skills => "List installed skills",
+            ObserveView::Memory => "List familiar memory files",
+            ObserveView::Research => "Show the research loop log",
+            ObserveView::Calls => "Show the Coven Calls ledger",
+            ObserveView::HubStatus => "Show hub control-plane status",
+        }
+    }
+}
+
+/// Render a view's human text against an explicit Coven home. For every
+/// view in [`ObserveView`] this is the single render path — the CLI
+/// command, the Cast shell, and the chat UI all call it, so the surfaces
+/// cannot drift. (CLI-only leaves like `hub nodes/jobs/routing` and the
+/// `calls <id>` detail live outside the view enum and render directly.)
+pub(crate) fn view_text(coven_home: &Path, view: ObserveView) -> Result<String> {
+    Ok(match view {
+        ObserveView::Status => {
+            let daemon_state = daemon::background_server_status(coven_home)?;
+            let live = match &daemon_state {
+                Some(daemon::DaemonStatusState::Running(status)) => Some(status.clone()),
+                _ => None,
+            };
+            let health = api_get_with_daemon(coven_home, "/api/v1/health", live)?;
+            let overview = api_get(coven_home, "/api/v1/overview")?;
+            render_status(daemon_state.as_ref(), &health, &overview)
+        }
+        ObserveView::Familiars => render_familiars(&api_get(coven_home, "/api/v1/familiars")?),
+        ObserveView::Skills => render_skills(&api_get(coven_home, "/api/v1/skills")?),
+        ObserveView::Memory => render_memory(&api_get(coven_home, "/api/v1/memory")?),
+        ObserveView::Research => render_research(&api_get(coven_home, "/api/v1/research")?),
+        ObserveView::Calls => render_calls(&api_get(coven_home, "/api/v1/coven-calls")?),
+        ObserveView::HubStatus => render_hub_status(&api_get(coven_home, "/api/v1/hub/status")?),
+    })
+}
+
 // ── API access ───────────────────────────────────────────────────────────────
 
 fn api_get(coven_home: &Path, path: &str) -> Result<Value> {
@@ -107,14 +175,14 @@ fn str_cell(value: &Value, key: &str) -> String {
 
 pub(crate) fn run_status(json: bool) -> Result<()> {
     let coven_home = coven_home_dir()?;
-    let daemon_state = daemon::background_server_status(&coven_home)?;
-    let live = match &daemon_state {
-        Some(daemon::DaemonStatusState::Running(status)) => Some(status.clone()),
-        _ => None,
-    };
-    let health = api_get_with_daemon(&coven_home, "/api/v1/health", live)?;
-    let overview = api_get(&coven_home, "/api/v1/overview")?;
     if json {
+        let daemon_state = daemon::background_server_status(&coven_home)?;
+        let live = match &daemon_state {
+            Some(daemon::DaemonStatusState::Running(status)) => Some(status.clone()),
+            _ => None,
+        };
+        let health = api_get_with_daemon(&coven_home, "/api/v1/health", live)?;
+        let overview = api_get(&coven_home, "/api/v1/overview")?;
         // CLI-level composition of the two stable API bodies; see
         // docs/reference/cli-observe.md.
         return print_json(&serde_json::json!({
@@ -122,10 +190,7 @@ pub(crate) fn run_status(json: bool) -> Result<()> {
             "overview": overview,
         }));
     }
-    print!(
-        "{}",
-        render_status(daemon_state.as_ref(), &health, &overview)
-    );
+    print!("{}", view_text(&coven_home, ObserveView::Status)?);
     Ok(())
 }
 
@@ -203,11 +268,11 @@ fn render_status(
 // ── coven familiars / skills / memory / research ─────────────────────────────
 
 pub(crate) fn run_familiars(json: bool) -> Result<()> {
-    let body = api_get(&coven_home_dir()?, "/api/v1/familiars")?;
+    let coven_home = coven_home_dir()?;
     if json {
-        return print_json(&body);
+        return print_json(&api_get(&coven_home, "/api/v1/familiars")?);
     }
-    print!("{}", render_familiars(&body));
+    print!("{}", view_text(&coven_home, ObserveView::Familiars)?);
     Ok(())
 }
 
@@ -243,11 +308,11 @@ fn render_familiars(body: &Value) -> String {
 }
 
 pub(crate) fn run_skills(json: bool) -> Result<()> {
-    let body = api_get(&coven_home_dir()?, "/api/v1/skills")?;
+    let coven_home = coven_home_dir()?;
     if json {
-        return print_json(&body);
+        return print_json(&api_get(&coven_home, "/api/v1/skills")?);
     }
-    print!("{}", render_skills(&body));
+    print!("{}", view_text(&coven_home, ObserveView::Skills)?);
     Ok(())
 }
 
@@ -279,11 +344,11 @@ fn render_skills(body: &Value) -> String {
 }
 
 pub(crate) fn run_memory(json: bool) -> Result<()> {
-    let body = api_get(&coven_home_dir()?, "/api/v1/memory")?;
+    let coven_home = coven_home_dir()?;
     if json {
-        return print_json(&body);
+        return print_json(&api_get(&coven_home, "/api/v1/memory")?);
     }
-    print!("{}", render_memory(&body));
+    print!("{}", view_text(&coven_home, ObserveView::Memory)?);
     Ok(())
 }
 
@@ -311,11 +376,11 @@ fn render_memory(body: &Value) -> String {
 }
 
 pub(crate) fn run_research(json: bool) -> Result<()> {
-    let body = api_get(&coven_home_dir()?, "/api/v1/research")?;
+    let coven_home = coven_home_dir()?;
     if json {
-        return print_json(&body);
+        return print_json(&api_get(&coven_home, "/api/v1/research")?);
     }
-    print!("{}", render_research(&body));
+    print!("{}", view_text(&coven_home, ObserveView::Research)?);
     Ok(())
 }
 
@@ -363,11 +428,10 @@ pub(crate) fn run_calls(id: Option<&str>, json: bool) -> Result<()> {
             print!("{}", render_call_detail(&body));
         }
         None => {
-            let body = api_get(&coven_home, "/api/v1/coven-calls")?;
             if json {
-                return print_json(&body);
+                return print_json(&api_get(&coven_home, "/api/v1/coven-calls")?);
             }
-            print!("{}", render_calls(&body));
+            print!("{}", view_text(&coven_home, ObserveView::Calls)?);
         }
     }
     Ok(())
@@ -443,11 +507,11 @@ fn render_call_detail(body: &Value) -> String {
 // ── coven hub ────────────────────────────────────────────────────────────────
 
 pub(crate) fn run_hub_status(json: bool) -> Result<()> {
-    let body = api_get(&coven_home_dir()?, "/api/v1/hub/status")?;
+    let coven_home = coven_home_dir()?;
     if json {
-        return print_json(&body);
+        return print_json(&api_get(&coven_home, "/api/v1/hub/status")?);
     }
-    print!("{}", render_hub_status(&body));
+    print!("{}", view_text(&coven_home, ObserveView::HubStatus)?);
     Ok(())
 }
 

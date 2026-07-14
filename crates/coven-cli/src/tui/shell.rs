@@ -39,6 +39,7 @@ pub(crate) enum MagicalTuiAction {
     OpenTui,
     Doctor,
     DaemonStatus,
+    CovenStatus,
     RunHarness,
     PatchOpenClaw,
     Sessions,
@@ -155,6 +156,14 @@ pub(crate) fn magical_tui_items() -> &'static [MagicalTuiItem] {
             description: "See whether the local Coven daemon is awake",
             command: "coven daemon status",
             action: MagicalTuiAction::DaemonStatus,
+        },
+        MagicalTuiItem {
+            key: "s",
+            slash: "/status",
+            label: "Coven status",
+            description: "Sessions, familiars, skills, research, and hub at a glance",
+            command: "coven status",
+            action: MagicalTuiAction::CovenStatus,
         },
         MagicalTuiItem {
             key: "4",
@@ -448,6 +457,19 @@ fn dispatch_cast_plan(plan: CastPlan) -> Result<()> {
             CastOutcome::for_request(request_text)
         }
         CastIntent::Quest { goal } => dispatch_cast_quest(&plan, &goal)?,
+        CastIntent::Observe { view } => {
+            run_observe_view(view)?;
+            CastOutcome {
+                request: request_text,
+                launched: Some(view.headline().to_string()),
+                session_id: None,
+                next_step: Some(format!(
+                    "Scriptable form: `{}` (add --json for machines)",
+                    view.command()
+                )),
+                notes: vec![],
+            }
+        }
         CastIntent::Quit => {
             let primary = theme::fg(theme::PRIMARY);
             let reset = theme::reset();
@@ -1629,6 +1651,7 @@ fn run_magical_tui_action(action: MagicalTuiAction) -> Result<()> {
         MagicalTuiAction::OpenTui => run(),
         MagicalTuiAction::Doctor => run_doctor(),
         MagicalTuiAction::DaemonStatus => run_daemon_command(DaemonCommand::Status { json: false }),
+        MagicalTuiAction::CovenStatus => run_observe_view(cast::ObserveView::Status),
         MagicalTuiAction::RunHarness => run_guided_harness_session(),
         MagicalTuiAction::PatchOpenClaw => {
             run_patch(None, vec![], None, None, None, false, false, true)
@@ -1863,6 +1886,16 @@ fn run_tui_help() -> Result<()> {
     println!("  /sessions");
     println!("  /attach <session-id>");
     println!("  /doctor");
+    println!("  /status · /familiars · /skills · /memory · /research · /calls · /hub");
+    Ok(())
+}
+
+/// Render a read-only observability view inline. Same single render path
+/// as the matching `coven <view>` command (`observe::view_text`), so the
+/// shell and the CLI can never disagree.
+fn run_observe_view(view: cast::ObserveView) -> Result<()> {
+    let coven_home = crate::coven_home_dir()?;
+    print!("{}", crate::observe::view_text(&coven_home, view)?);
     Ok(())
 }
 
