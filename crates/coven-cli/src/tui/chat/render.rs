@@ -1188,7 +1188,12 @@ pub(crate) fn render_chat_frame_plain_for_test(width: u16, height: u16) -> Strin
         harness: "codex".to_string(),
         available: true,
     }];
-    let mut app = App::new_with_state(agents, Some(0), Box::<DaemonChatClient>::default(), None);
+    let mut app = App::new_with_state(
+        agents,
+        Some(0),
+        Box::new(DaemonChatClient::with_coven_home(std::env::temp_dir())),
+        Some(std::env::temp_dir()),
+    );
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).expect("test terminal");
     terminal
@@ -1755,8 +1760,10 @@ mod tests {
         let mut app = App::new_with_state(
             agents,
             Some(0),
-            Box::<crate::tui::chat::client::DaemonChatClient>::default(),
-            None,
+            Box::new(crate::tui::chat::client::DaemonChatClient::with_coven_home(
+                std::env::temp_dir(),
+            )),
+            Some(std::env::temp_dir()),
         );
         app.show_help = true;
         app.help_scroll = scroll;

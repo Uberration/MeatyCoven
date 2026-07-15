@@ -18,7 +18,7 @@ use crate::{
 };
 
 use super::client::{
-    coven_home_dir, ChatClient, ChatDaemonStatus, ChatEventQuery, DaemonChatClient, LaunchRequest,
+    ChatClient, ChatDaemonStatus, ChatEventQuery, DaemonChatClient, LaunchRequest,
 };
 use super::persistence;
 use super::settings::{self, ChatSettings, StreamingMode};
@@ -252,15 +252,16 @@ pub(super) const SLASH_COMMANDS: &[SlashCommand] = &[
 pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 impl App {
-    pub(super) fn new() -> Self {
+    pub(super) fn new() -> anyhow::Result<Self> {
         let agents = discover_agents();
         let active_agent = agents.iter().position(|a| a.available);
-        Self::new_with_state(
+        let coven_home = crate::coven_home_dir()?;
+        Ok(Self::new_with_state(
             agents,
             active_agent,
-            Box::<DaemonChatClient>::default(),
-            Some(coven_home_dir()),
-        )
+            Box::new(DaemonChatClient::with_coven_home(coven_home.clone())),
+            Some(coven_home),
+        ))
     }
 
     pub(super) fn new_with_state(
@@ -869,9 +870,8 @@ impl App {
                     "Quest planned for: {goal}. Cast will run each phase through this composer; start with the design phase prompt when ready."
                 ));
             }
-            CastIntent::Observe { view } => {
-                let home = self.coven_home.clone().unwrap_or_else(coven_home_dir);
-                match crate::observe::view_text(&home, view) {
+            CastIntent::Observe { view } => match self.resolved_coven_home() {
+                Some(home) => match crate::observe::view_text(&home, view) {
                     Ok(text) => {
                         self.push_system_message(text.trim_end());
                         self.push_system_message(&format!(
@@ -885,8 +885,14 @@ impl App {
                             view.command()
                         ));
                     }
+                },
+                None => {
+                    self.push_system_message(&format!(
+                        "Could not resolve the Coven home (set COVEN_HOME). The same data is available via `{}`.",
+                        view.command()
+                    ));
                 }
-            }
+            },
             CastIntent::Quit => return SlashCommandResult::Quit,
         }
         SlashCommandResult::Handled
@@ -1335,17 +1341,30 @@ impl App {
         }
     }
 
+    /// The Coven home for store-backed views and exports: the app-pinned
+    /// home (always set in production via [`App::new`]), else environment
+    /// resolution. `None` when no home can be determined — callers fail
+    /// closed rather than guessing a cwd-relative path.
+    fn resolved_coven_home(&self) -> Option<PathBuf> {
+        self.coven_home
+            .clone()
+            .or_else(|| crate::coven_home_dir().ok())
+    }
+
     fn push_doctor_summary(&mut self) {
         let project = std::env::current_dir()
             .ok()
             .and_then(|cwd| project::canonical_project_root(&cwd).ok())
             .map(|root| root.display().to_string())
             .unwrap_or_else(|| "not inside a git/project root yet".to_string());
-        let store_path = self.coven_home.clone().unwrap_or_else(coven_home_dir);
+        let store_path = self
+            .resolved_coven_home()
+            .map(|home| home.display().to_string())
+            .unwrap_or_else(|| "unresolved — set COVEN_HOME".to_string());
         let harnesses = harness::built_in_harnesses();
         let mut lines = vec![
             "Doctor".to_string(),
-            format!("  Store    {}", store_path.display()),
+            format!("  Store    {store_path}"),
             format!("  Project  {project}"),
             "  Harnesses".to_string(),
         ];
@@ -1871,8 +1890,13 @@ impl App {
             return;
         }
 
-        let home = dirs_next::home_dir().unwrap_or_default();
-        let export_dir = home.join(".coven").join("exports");
+        let Some(coven_home) = self.resolved_coven_home() else {
+            self.push_system_message(
+                "Export failed: could not resolve the Coven home (set COVEN_HOME).",
+            );
+            return;
+        };
+        let export_dir = coven_home.join("exports");
         if std::fs::create_dir_all(&export_dir).is_err() {
             self.push_system_message("Failed to create export directory.");
             return;
