@@ -2225,7 +2225,7 @@ fn should_keep_launch_inline(plan: &CastPlan) -> bool {
 /// turn's conversation via the harness CLI's session-resume mechanism. See
 /// `docs/chat-persistence.md` for the per-harness mechanics.
 fn harness_supports_chat_resume(harness: &str) -> bool {
-    matches!(harness, "claude" | "codex" | "copilot")
+    matches!(harness, "claude" | "codex" | "copilot" | "grok")
 }
 
 /// Whether `data` (a chunk of harness output) indicates the harness rejected
@@ -2235,7 +2235,16 @@ fn harness_supports_chat_resume(harness: &str) -> bool {
 /// `docs/chat-persistence.md` under "stale-id auto-recovery". Copilot needs
 /// no arm here: chat resumes it through `--session-id`, which re-creates a
 /// fresh session under the same id when the prior one is gone instead of
-/// erroring.
+/// erroring. Grok's `--resume` is strict like claude's (its `--session-id`
+/// refuses ids that already exist, so it can't serve as a self-healing
+/// resume flag), and a missing session fails on stderr — which shares the
+/// harness PTY, so the same output-text matching covers it even though
+/// grok, unlike claude/codex, also exits non-zero. Grok's arm matches the
+/// CLI's complete printed line ("Error: " prefix included) rather than the
+/// bare phrase, so assistant prose has to reproduce the exact error line —
+/// not just mention sessions not existing — to trip it; the residual
+/// quoting exposure is the same one accepted for the claude/codex PTY
+/// arms above.
 ///
 /// The match is a broad `contains` because callers scope the input
 /// before passing it in. For Stream mode `push_event_message` skips the
@@ -2252,6 +2261,7 @@ fn detect_stale_session(harness: &str, data: &str) -> bool {
         "codex" => {
             data.contains("no rollout found for thread id") || data.contains("thread/resume failed")
         }
+        "grok" => data.contains("Error: Session does not exist"),
         _ => false,
     }
 }
@@ -3801,6 +3811,18 @@ mod tests {
             "copilot",
             "No conversation found with session ID: x"
         ));
+        // Grok's strict `--resume` against a wiped session store: the arm
+        // requires the CLI's full printed error line, not the bare phrase,
+        // so prose that merely discusses missing sessions can't trip it.
+        assert!(detect_stale_session(
+            "grok",
+            "Error: Session does not exist"
+        ));
+        assert!(!detect_stale_session("grok", "fake grok reply"));
+        assert!(!detect_stale_session(
+            "grok",
+            "That happens when the session does not exist anymore."
+        ));
     }
 
     #[test]
@@ -3808,6 +3830,7 @@ mod tests {
         assert!(harness_supports_chat_resume("claude"));
         assert!(harness_supports_chat_resume("codex"));
         assert!(harness_supports_chat_resume("copilot"));
+        assert!(harness_supports_chat_resume("grok"));
         assert!(!harness_supports_chat_resume("hermes"));
     }
 
