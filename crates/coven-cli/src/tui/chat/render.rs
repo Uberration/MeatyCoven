@@ -596,8 +596,7 @@ fn parse_inline_markdown<'a>(text: &str, default_style: Style) -> Vec<Span<'a>> 
                             let url = &url_part[..close_url];
                             if !label.is_empty() && !url.is_empty() {
                                 flush_inline_buf(&mut spans, &mut buf, default_style);
-                                let link_style =
-                                    default_style.add_modifier(Modifier::UNDERLINED);
+                                let link_style = default_style.add_modifier(Modifier::UNDERLINED);
                                 spans.push(Span::styled(label.to_string(), link_style));
                                 let url_style = theme::ratatui_style(TEXT_DIM);
                                 spans.push(Span::styled(format!(" ({url})"), url_style));
@@ -2310,7 +2309,9 @@ mod tests {
         let mut lines: Vec<Line<'_>> = Vec::new();
         append_agent_content_lines(&mut lines, "above\n---\nbelow", 20);
         let rendered = flatten_lines(&lines);
-        assert!(rendered.iter().any(|l| l.contains("\u{2500}\u{2500}\u{2500}")));
+        assert!(rendered
+            .iter()
+            .any(|l| l.contains("\u{2500}\u{2500}\u{2500}")));
         assert!(!rendered.iter().any(|l| l.trim() == "---"));
     }
 
