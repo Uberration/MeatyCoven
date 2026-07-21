@@ -14,7 +14,7 @@ Coven supervises harness PTYs. It never reads, proxies, persists, or mints provi
 
 - Provider tokens live wherever the harness already puts them — typically `~/.codex/`, `~/.config/anthropic/`, `~/.copilot/`, or a system keychain managed by that CLI.
 - The Coven daemon never reads them, never stores them in SQLite, never forwards them over the socket API, and never logs them into the event ledger.
-- `coven doctor` only checks whether the harness binary exists; it does **not** test provider credentials. Each harness already ships its own `login` / `doctor` for that.
+- `coven doctor` reports the Coven Code engine's login state, but only checks whether each external harness binary exists; it does **not** test provider credentials for those harnesses. Each harness already ships its own `login` / `doctor` for that.
 - Treat Coven as having **zero** knowledge of provider auth state. The boundary is intentional.
 
 ## Why Coven refuses to own credentials
@@ -43,6 +43,27 @@ The arrow that matters is the missing one: the daemon has no dotted line into th
 ### CLI
 
 `coven run codex|claude <prompt>` launches the harness with an empty argument vector apart from the validated prompt and adapter prefix args. It does not inject `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or any token-bearing env var. If the harness needs a credential, it reads it the same way it would when launched directly from your shell.
+
+### Coven Code engine
+
+`coven auth ...` is a convenience pass-through to the separate Coven Code
+engine. It is not a daemon credential store and it does not change the
+credential boundary for `coven run` harness sessions.
+
+`coven auth login` specifically starts Coven Code's **Anthropic OAuth** flow.
+That flow is available only when the operator has registered a Coven Code OAuth
+client and set its client ID in `COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID`. A normal
+installation should not set an arbitrary client ID just to make the command run.
+
+Without that OAuth configuration, use one of the supported alternatives:
+
+- Set `ANTHROPIC_API_KEY` for a direct Anthropic API account, then start Coven
+  Code.
+- Authenticate the official Claude Code CLI and use `coven run claude <prompt>`.
+- Run `coven code codex login` for ChatGPT/Codex authentication.
+
+`coven doctor` reports the engine's login state and points to these alternatives
+instead of suggesting an OAuth login that cannot succeed.
 
 ### Daemon API
 

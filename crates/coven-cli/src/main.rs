@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 #[cfg(unix)]
 use std::io::Read;
 use std::io::{self, BufRead, IsTerminal, Write};
@@ -62,6 +62,7 @@ const DEFAULT_SESSION_STATUS: &str = "created";
 const RUNNING_SESSION_STATUS: &str = "running";
 const FAILED_SESSION_STATUS: &str = "failed";
 const DEFAULT_TITLE_CHARS: usize = 48;
+const COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID: &str = "COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID";
 
 #[derive(Parser, Debug)]
 #[command(name = "coven")]
@@ -975,7 +976,7 @@ fn run_cli(cli: Cli) -> Result<()> {
             keep_session,
         ),
         Some(Command::Pc { command }) => pc::run_pc_command(command),
-        Some(Command::Auth { args }) => run_engine_passthrough(Some("auth"), &args),
+        Some(Command::Auth { args }) => run_auth_command(&args),
         Some(Command::Models { args }) => run_engine_passthrough(Some("models"), &args),
         Some(Command::Acp { args }) => run_engine_passthrough(Some("acp"), &args),
         Some(Command::Code { args }) => run_engine_passthrough(None, &args),
@@ -1317,6 +1318,70 @@ fn run_engine_passthrough(lead: Option<&str>, args: &[OsString]) -> Result<()> {
     }
     command.args(args);
     exec_engine(command)
+}
+
+/// Run the curated Coven Code auth entry point.
+///
+/// `auth login` is Anthropic OAuth, not a generic interactive credential
+/// wizard. The engine correctly requires a registered OAuth client ID, but
+/// checking it here prevents the wrapper from launching a browser-bound flow
+/// that cannot succeed on a normal installation.
+fn run_auth_command(args: &[OsString]) -> Result<()> {
+    if auth_login_requested(args) && auth_help_requested(args) {
+        // The pinned engine accepts raw auth args and would otherwise treat
+        // `--help` as a login request, so answer this wrapper-level help here.
+        println!("{}", anthropic_oauth_login_help_message());
+        return Ok(());
+    }
+
+    if auth_login_requested(args)
+        && !configured_oauth_client_id(
+            std::env::var_os(COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID).as_deref(),
+        )
+    {
+        bail!(anthropic_oauth_client_id_required_message());
+    }
+
+    run_engine_passthrough(Some("auth"), args)
+}
+
+fn auth_login_requested(args: &[OsString]) -> bool {
+    matches!(args.first().and_then(|arg| arg.to_str()), Some("login"))
+}
+
+fn auth_help_requested(args: &[OsString]) -> bool {
+    args.iter()
+        .any(|arg| matches!(arg.to_str(), Some("--help") | Some("-h")))
+}
+
+fn configured_oauth_client_id(client_id: Option<&OsStr>) -> bool {
+    client_id
+        .and_then(OsStr::to_str)
+        .is_some_and(|client_id| !client_id.trim().is_empty())
+}
+
+fn anthropic_oauth_client_id_required_message() -> String {
+    format!(
+        "Coven Code's Anthropic OAuth login is not configured for this installation.\n\n\
+`coven auth login` requires a registered Coven Code OAuth client ID in \
+{COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID}. Do not set an arbitrary client ID.\n\n\
+Use one of these supported paths instead:\n\
+  - Anthropic API: set ANTHROPIC_API_KEY, then start Coven Code.\n\
+  - Claude Code: install and authenticate `claude`, then run `coven run claude <prompt>`.\n\
+  - ChatGPT/Codex: run `coven code codex login`.\n\n\
+If you operate a registered Coven Code OAuth client, set \
+COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID and run `coven auth login` again."
+    )
+}
+
+fn anthropic_oauth_login_help_message() -> String {
+    format!(
+        "Usage: coven auth login [--console] [--label <name>]\n\n\
+Authenticate Coven Code through Anthropic OAuth. This requires a registered Coven Code OAuth \
+client ID in {COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID}.\n\n\
+  --console       Use the Anthropic Console OAuth flow.\n\
+  --label <name>  Give the authenticated account profile a name."
+    )
 }
 
 /// Exec `coven-code` in place of the current process. Returns only on failure;
@@ -1791,7 +1856,10 @@ fn doctor_checks(report: &DoctorReport) -> Vec<DoctorCheck> {
             Some(false) => DoctorCheck::warn(
                 "credentials:engine",
                 "not logged in",
-                Some("run: coven auth login".to_string()),
+                Some(
+                    "set ANTHROPIC_API_KEY, authenticate Claude Code, or configure OAuth then run: coven auth login"
+                        .to_string(),
+                ),
             ),
             None => DoctorCheck::warn("credentials:engine", "auth check skipped", None),
         });
@@ -2559,7 +2627,7 @@ fn credentials_lines(
         }
         Some(Some(false)) => {
             lines.push(
-                "  [!!] Coven Code (engine) — not logged in; run `coven auth login`".to_string(),
+                "  [!!] Coven Code (engine) — not logged in; set ANTHROPIC_API_KEY, use Claude Code, or configure OAuth".to_string(),
             );
         }
         Some(None) => {
@@ -3903,7 +3971,6 @@ mod tests {
         MagicalTuiMove, MagicalTuiRequest, MAGICAL_TUI_MAX_INNER_WIDTH,
     };
     use crossterm::event::KeyEventKind;
-    use std::ffi::OsStr;
     use std::sync::{Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -5744,8 +5811,55 @@ mod tests {
         let lines = credentials_lines(Some(Some(false)), &[]);
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("not logged in"), "got: {}", lines[0]);
-        assert!(lines[0].contains("coven auth login"), "got: {}", lines[0]);
+        assert!(lines[0].contains("ANTHROPIC_API_KEY"), "got: {}", lines[0]);
+        assert!(lines[0].contains("Claude Code"), "got: {}", lines[0]);
         assert!(lines[0].contains("[!!]"), "got: {}", lines[0]);
+    }
+
+    #[test]
+    fn auth_login_requires_a_nonempty_oauth_client_id() {
+        let args = vec![OsString::from("login")];
+        assert!(auth_login_requested(&args));
+        assert!(!configured_oauth_client_id(None));
+        assert!(!configured_oauth_client_id(Some(OsStr::new("   "))));
+        assert!(configured_oauth_client_id(Some(OsStr::new("client-id"))));
+    }
+
+    #[test]
+    fn auth_passthrough_only_blocks_the_anthropic_login_subcommand() {
+        assert!(!auth_login_requested(&[]));
+        assert!(!auth_login_requested(&[OsString::from("status")]));
+        assert!(!auth_login_requested(&[OsString::from("--help")]));
+    }
+
+    #[test]
+    fn auth_login_help_lists_login_options() {
+        assert!(auth_login_requested(&[
+            OsString::from("login"),
+            OsString::from("--help"),
+        ]));
+        assert!(auth_help_requested(&[
+            OsString::from("login"),
+            OsString::from("--help"),
+        ]));
+        assert!(auth_help_requested(&[
+            OsString::from("login"),
+            OsString::from("-h"),
+        ]));
+        let help = anthropic_oauth_login_help_message();
+        assert!(help.contains("Usage: coven auth login"));
+        assert!(help.contains(COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID));
+        assert!(help.contains("--console"));
+        assert!(help.contains("--label"));
+    }
+
+    #[test]
+    fn missing_oauth_client_message_lists_supported_auth_paths() {
+        let message = anthropic_oauth_client_id_required_message();
+        assert!(message.contains(COVEN_CODE_ANTHROPIC_OAUTH_CLIENT_ID));
+        assert!(message.contains("ANTHROPIC_API_KEY"));
+        assert!(message.contains("coven run claude"));
+        assert!(message.contains("coven code codex login"));
     }
 
     #[test]
